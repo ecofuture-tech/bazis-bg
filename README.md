@@ -162,17 +162,18 @@ python manage.py migrate
 
 ```bash
 # Scheduler
-BS_TASK_SCHEDULER_HOST=localhost
-BS_TASK_SCHEDULER_PORT=8099
-BS_TASK_SCHEDULER_IDLE=1
+BS_BAZIS_TASK_SCHEDULER_HOST=localhost
+BS_BAZIS_TASK_SCHEDULER_PORT=49001
+BS_BAZIS_TASK_SCHEDULER_IDLE=0.2
 
 # Handlers
-BS_TASK_HANDLERS_LOCAL=3
-BS_TASK_HANDLER_PORT=8100
-BS_TASK_HANDLER_IDLE=1
+BS_BAZIS_TASK_HANDLERS_LOCAL=5
+BS_BAZIS_TASK_HANDLERS_GLOBAL=50
+BS_BAZIS_TASK_HANDLER_PORT=49100
+BS_BAZIS_TASK_HANDLER_IDLE=0.5
 
 # Storage
-BS_TASK_FOLDER=bg/tasks
+BS_BAZIS_TASK_FOLDER=bg
 ```
 
 ## Architecture
@@ -577,18 +578,19 @@ self.log.debug('Debug information')
 
 ```bash
 # Scheduler
-BS_TASK_SCHEDULER_HOST=localhost  # Scheduler host
-BS_TASK_SCHEDULER_PORT=8099       # Scheduler healthcheck port
-BS_TASK_SCHEDULER_IDLE=1          # Delay between iterations, sec
+BS_BAZIS_TASK_SCHEDULER_HOST=localhost  # Scheduler host
+BS_BAZIS_TASK_SCHEDULER_PORT=49001      # Scheduler healthcheck port
+BS_BAZIS_TASK_SCHEDULER_IDLE=0.2        # Delay between iterations, sec
 
 # Handlers
-BS_TASK_HANDLERS_LOCAL=3          # Number of local handlers
-BS_TASK_HANDLER_PORT=8100         # Base port for handlers
-BS_TASK_HANDLER_IDLE=1            # Delay between task checks, sec
+BS_BAZIS_TASK_HANDLERS_LOCAL=5          # Number of local handlers
+BS_BAZIS_TASK_HANDLERS_GLOBAL=50        # Global number of handlers
+BS_BAZIS_TASK_HANDLER_PORT=49100        # Base port for handlers
+BS_BAZIS_TASK_HANDLER_IDLE=0.5          # Delay between task checks, sec
 
 # Storage
-BS_TASK_FOLDER=bg/tasks           # Folder for task files
-BS_STORAGE_BG=None                # Storage class (default FileSystemStorage)
+BS_BAZIS_TASK_FOLDER=bg                 # Folder for task files
+BS_BAZIS_STORAGE_BG=None                # Storage class (default FileSystemStorage)
 ```
 
 ### Django Settings
@@ -598,6 +600,9 @@ BS_STORAGE_BG=None                # Storage class (default FileSystemStorage)
 
 # Number of local handlers
 BAZIS_TASK_HANDLERS_LOCAL = 3
+
+# Global number of handlers
+BAZIS_TASK_HANDLERS_GLOBAL = 50
 
 # Base port for handlers
 BAZIS_TASK_HANDLER_PORT = 8100
