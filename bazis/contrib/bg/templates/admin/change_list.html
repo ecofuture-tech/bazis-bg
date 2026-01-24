@@ -1,0 +1,10 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script>
+        {% if cl.model_admin.actions_task_load %}
+            var actions_task_load = {{ cl.model_admin.actions_task_load | safe }};
+        {% endif %}
+    </script>
+{% endblock %}
