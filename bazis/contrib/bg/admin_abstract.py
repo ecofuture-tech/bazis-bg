@@ -202,7 +202,7 @@ class TaskAdminBase(DtAdminMixin, AutocompleteMixin, AuthorAdminMixin, admin.Mod
         'state',
         'phase',
         '_progress',
-        '_phases_history',
+        # '_phases_history',
         '_log',
         '_error',
         '_interrupting',
@@ -230,8 +230,8 @@ class TaskAdminBase(DtAdminMixin, AutocompleteMixin, AuthorAdminMixin, admin.Mod
     list_filter = (
         'state',
         TaskDoneFilter,
-        TaskClsFilter,
         ('task_cron', TaskCronFilter),
+        TaskClsFilter,
     )
 
     def _file(self, task):
@@ -318,7 +318,7 @@ class TaskCronForm(forms.ModelForm):
 
 
 class TaskCronAdminBase(DtAdminMixin, AutocompleteMixin, AuthorAdminMixin, admin.ModelAdmin):
-    list_display = ('name', 'cls_path', 'args', 'kwargs', 'period', 'dt_run', 'is_enable')
+    list_display = ('name', 'cls_path', 'period', 'dt_run', 'is_enable')
     list_editable = ('is_enable',)
-    readonly_fields = ('dt_run',)
+    ordering = ['name']
     form = TaskCronForm
