@@ -20,7 +20,7 @@ import sys
 import threading
 import traceback
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from time import sleep
 
 from django.apps import apps
@@ -28,7 +28,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Subquery
-from django.utils.timezone import make_aware, now
+from django.utils.timezone import now
 
 import aiohttp
 import psutil
@@ -45,6 +45,13 @@ sys.stderr.reconfigure(line_buffering=True)
 LOG = logging.getLogger(__name__)
 
 
+def cron_next_run(period: str) -> datetime:
+    """
+    Returns the next run time of a cron expression (evaluated in UTC) as an aware datetime.
+    """
+    return datetime.fromtimestamp(CronTab(period).next(default_utc=True, delta=False), tz=UTC)
+
+
 def proc_start(cmd, envs=None):
     env = os.environ.copy()
     env.update(envs or {})
@@ -52,6 +59,8 @@ def proc_start(cmd, envs=None):
 
 
 class Command(BaseCommand):
+    #: the number of waiting tasks examined in one cycle
+    prepare_batch = 100
 
     @staticmethod
     def _task_cron_update(task_cron, **kwargs):
@@ -87,7 +96,7 @@ class Command(BaseCommand):
         ):
             task_cls = task_cron.cls
             if not task_cls:
-                print(f'Cron task class not found: {task_cron.cls_path}')
+                LOG.warning('Cron task class not found: %s', task_cron.cls_path)
                 continue
 
             # if the next run time is specified - check it
@@ -126,18 +135,14 @@ class Command(BaseCommand):
             else:
                 # try to create a cron object
                 try:
-                    cron = CronTab(task_cron.period)
+                    dt_run = cron_next_run(task_cron.period)
                 except Exception:  # NOQA [B902]
                     # in case of an error, write it to the task
                     self._task_cron_update(task_cron, error=traceback.format_exc())
                 else:
-                    # write the time of the next run to the task
-                    self._task_cron_update(
-                        task_cron,
-                        dt_run=make_aware(
-                            datetime.fromtimestamp(cron.next(default_utc=True, delta=False)),
-                        )
-                    )
+                    # write the time of the next run to the task (fromtimestamp without tz
+                    # used the time zone of the server instead of UTC)
+                    self._task_cron_update(task_cron, dt_run=dt_run)
 
     @throttle(2)
     def tasks_check(self):
@@ -156,14 +161,22 @@ class Command(BaseCommand):
     def tasks_prepare(self):
         Task = apps.get_model('bg.Task') # noqa F806
 
-        # collect running tasks according to the DB
-        actives_cls = defaultdict(set)
-        for t in Task.objects.filter(state__in=['running', 'starting'])[:10]:
-            actives_cls[t.cls_path].add(t)
+        # collect all running tasks according to the DB (their number is limited by the
+        # handlers): a partial list allowed more parallel tasks than permitted
+        actives_cls = defaultdict(list)
+        for t in Task.objects.filter(state__in=['running', 'starting']).only(
+            'id', 'cls_path', 'args', 'kwargs'
+        ):
+            actives_cls[t.cls_path].append(t)
 
-        # iterate over all tasks waiting to be started
+        # iterate over the tasks waiting to be started, the oldest first: with an arbitrary
+        # order, blocked tasks could hold the batch and the others never started
         with transaction.atomic():
-            for task in Task.objects.filter(state='waiting')[:10]:
+            for task in (
+                Task.objects.select_for_update(skip_locked=True)
+                .filter(state='waiting')
+                .order_by('dt_created')[: self.prepare_batch]
+            ):
                 if not task.cls:
                     task.delete()
                     continue
@@ -211,7 +224,7 @@ class Command(BaseCommand):
                 task.state = 'starting'
                 task.save(update_fields=['state'])
 
-                actives_cls[task.cls_path].add(task)
+                actives_cls[task.cls_path].append(task)
 
     def start_handlers_check(self):
         TaskHandler = apps.get_model('bg.TaskHandler') # noqa F806
