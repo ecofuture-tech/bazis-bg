@@ -156,3 +156,44 @@ def test_scheduler_blocked_backlog_does_not_starve_other_classes(monkeypatch):
     assert set(
         Task.objects.filter(state='waiting').values_list('phase', flat=True)
     ) == {'Maximum of 2 similar tasks'}
+
+
+def test_load_zip_skips_macos_metadata(tmp_path):
+    """
+    Archives made on macOS contain `__MACOSX/._<name>.xlsx` metadata files, which are not
+    workbooks.
+    """
+    from openpyxl import Workbook
+
+    from bazis.contrib.bg.basic.base_load import BgBaseLoad
+
+    workbook = Workbook()
+    workbook.active.append(['a', 1])
+    xlsx = tmp_path / 'data.xlsx'
+    workbook.save(xlsx)
+    archive = tmp_path / 'data.zip'
+    with ZipFile(archive, 'w') as zp:
+        zp.write(xlsx, 'data.xlsx')
+        zp.writestr('__MACOSX/._data.xlsx', b'\x00\x05\x16\x07')
+        zp.writestr('._other.xlsx', b'\x00')
+
+    rows = []
+
+    class Load(BgBaseLoad):
+        fields_read = ['name', 'value']
+
+        def __init__(self):
+            self.log = logging.getLogger(__name__)
+
+        def task_file_get(self):
+            return open(archive, 'rb')  # noqa: SIM115
+
+        def next_phase(self, *args, **kwargs): ...
+
+        def progress(self, *args, **kwargs): ...
+
+        def load(self, reader):
+            rows.extend(reader)
+
+    Load().handle()
+    assert rows == [{'name': 'a', 'value': 1}]

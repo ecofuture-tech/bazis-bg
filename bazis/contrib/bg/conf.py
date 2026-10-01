@@ -35,13 +35,15 @@ class Settings(BazisSettings):
     BAZIS_TASK_SCHEDULER_HOST: str | None = Field(None, title='Explicitly specifies the scheduler host')
     BAZIS_TASK_SCHEDULER_PORT: int = Field(49001, title='Default scheduler port')
     BAZIS_TASK_LIFETIME: int = Field(
-        7776000, title='Lifetime of manual background tasks', dynamic=True
+        7776000, title='Lifetime of manual background tasks', json_schema_extra={'dynamic': True}
     )
     BAZIS_TASK_CRON_LIFETIME: int = Field(
-        21600, title='Lifetime of periodic background tasks', dynamic=True
+        21600, title='Lifetime of periodic background tasks', json_schema_extra={'dynamic': True}
     )
     BAZIS_TASK_CRON_CLEANUP: int = Field(
-        3600, title='Interval for running cleanup of periodic background tasks', dynamic=True
+        3600,
+        title='Interval for running cleanup of periodic background tasks',
+        json_schema_extra={'dynamic': True},
     )
 
 
