@@ -35,17 +35,16 @@ class BgBaseLoad(BgBase):
     def handle(self):
         # get the file
         fp = self.task_file_get()
+        if not fp:
+            raise Exception('File not provided!')
 
         # determine the file extension
         ext = os.path.splitext(os.path.split(fp.name)[-1])[-1]
 
         # create a temporary local file, since the file may be taken from S3
         self.tmp_file = tempfile.NamedTemporaryFile(suffix=ext)
-        self.tmp_file.write(fp.read())
+        shutil.copyfileobj(fp, self.tmp_file)
         self.tmp_file.seek(0)
-
-        if not fp:
-            raise Exception('File not provided!')
 
         if ext == '.xlsx':
             files = [self.tmp_file.name]
@@ -59,7 +58,12 @@ class BgBaseLoad(BgBase):
             with ZipFile(self.tmp_file) as zp:
                 zp.extractall(self.tmp_folder)
             # get the list of paths
-            files = [os.path.join(self.tmp_folder, fn) for fn in os.listdir(self.tmp_folder)]
+            files = sorted(
+                os.path.join(root, fn)
+                for root, _dirs, fns in os.walk(self.tmp_folder)
+                for fn in fns
+                if fn.endswith('.xlsx')
+            )
             self.log.info('Received zip archive: %s', ', '.join(files))
         else:
             raise Exception('Unsupported file extension for upload')

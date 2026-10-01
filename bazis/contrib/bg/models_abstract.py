@@ -34,6 +34,14 @@ else:
     TaskStorage = FileSystemStorage
 
 
+def get_task_storage():
+    """
+    Returns the storage of the task files: the class from BAZIS_STORAGE_BG, or the file
+    system storage in MEDIA_ROOT.
+    """
+    return TaskStorage()
+
+
 class TaskBaseModel(UuidMixin, DtMixin, AuthorMixin):
     name = models.CharField('Name', max_length=255)
     cls_path = models.CharField('Task class', max_length=255, db_index=True)
@@ -75,7 +83,7 @@ class TaskBase(TaskBaseModel):
     dt_start = models.DateTimeField('Start time', null=True, blank=True, db_index=True)
     dt_finish = models.DateTimeField('Finish time', null=True, blank=True, db_index=True)
     file = models.FileField(
-        'File', upload_to=task_file_name, blank=True, null=True
+        'File', upload_to=task_file_name, blank=True, null=True, storage=get_task_storage
     )
     file_params = models.JSONField(null=True, encoder=JsonFieldEncoder, blank=True)
     log = models.TextField('Log', blank=True, null=True)
@@ -90,18 +98,14 @@ class TaskBase(TaskBaseModel):
     )
     result = models.JSONField('Result', encoder=JsonFieldEncoder, null=True, blank=True)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._meta.get_field('file').storage = TaskStorage()
-
     class Meta:
         abstract = True
         verbose_name = 'Background task'
         verbose_name_plural = 'Background tasks'
         ordering = ['-id']
-        index_together = [
-            ('cls_path', 'state'),
-            ('state', 'dt_finish'),
+        indexes = [
+            models.Index(fields=['cls_path', 'state'], name='%(app_label)s_%(class)s_cls_state'),
+            models.Index(fields=['state', 'dt_finish'], name='%(app_label)s_%(class)s_state_fin'),
         ]
 
     def set_done(self, phase, error=None):

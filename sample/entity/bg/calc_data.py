@@ -15,6 +15,7 @@
 from django.utils.translation import gettext_lazy as _
 
 from bazis.contrib.bg.basic.base import BgBase
+from bazis.contrib.bg.basic.base_download_model import BgBaseDownloadModel
 
 from entity.models import ParentEntity
 
@@ -31,3 +32,27 @@ class CalcData(BgBase):
             parent.is_active = True
             parent.save()
             self.progress()
+
+
+class LogMessage(BgBase):
+    """
+    Logs its argument: used by the tests of the task logs.
+    """
+
+    name = _('Log message')
+    parallel = 2
+
+    def handle(self) -> None:
+        self.log.info('message: %s', self.message)
+
+    def __init__(self, message: str):
+        self.message = message
+
+
+class ExportParents(BgBaseDownloadModel):
+    """
+    Exports the parent entities: used by the tests of the export.
+    """
+
+    model = ParentEntity
+    fields_read = ['name', 'is_active', 'price']
