@@ -14,9 +14,20 @@
 
 from django.apps import apps
 
-from bazis.contrib.author.routes_abstract import AuthorRouteMixin
+from bazis.contrib.author.routes_abstract import AuthorRequiredRouteBase
 
 
-class BgRoute(AuthorRouteMixin):
+class BgRoute(AuthorRequiredRouteBase):
+    """
+    The background tasks of the user (staff see all tasks): their arguments, logs and files
+    are private.
+    """
+
     model = apps.get_model('bg.Task')
     actions = ['action_list', 'action_retrieve']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self.inject.user.is_staff:
+            queryset = queryset.filter(author=self.inject.user)
+        return queryset
