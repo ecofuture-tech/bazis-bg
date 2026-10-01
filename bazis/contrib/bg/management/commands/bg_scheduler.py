@@ -158,6 +158,18 @@ class Command(BaseCommand):
             dt_finish=now(),
         )
 
+    @staticmethod
+    def _reject_phase(task_cls, actives_cls) -> str | None:
+        """
+        The reason why no more tasks of the class can start now, or None.
+        """
+        if len(actives_cls[task_cls.get_path()]) >= task_cls.parallel:
+            return f'Maximum of {task_cls.parallel} similar tasks'
+        blocked = [cls_block for cls_block in task_cls.blocked if actives_cls[cls_block]]
+        if blocked:
+            return 'Waiting for completion of tasks: {}'.format(', '.join(blocked))
+        return None
+
     def tasks_prepare(self):
         Task = apps.get_model('bg.Task') # noqa F806
 
@@ -169,50 +181,46 @@ class Command(BaseCommand):
         ):
             actives_cls[t.cls_path].append(t)
 
-        # iterate over the tasks waiting to be started, the oldest first: with an arbitrary
-        # order, blocked tasks could hold the batch and the others never started
         with transaction.atomic():
+            # interrupted waiting tasks are closed whatever their class
+            for task in Task.objects.select_for_update(skip_locked=True).filter(
+                state='waiting', interrupt=True
+            ):
+                task.set_done('interrupted')
+
+            # the classes that cannot start a task now are excluded from the query below:
+            # otherwise their waiting tasks could fill the batch and the tasks of the other
+            # classes never started
+            startable = []
+            for cls_path in (
+                Task.objects.filter(state='waiting').values_list('cls_path', flat=True).distinct()
+            ):
+                task_cls = Task(cls_path=cls_path).cls
+                if not task_cls:
+                    Task.objects.filter(state='waiting', cls_path=cls_path).delete()
+                    continue
+                if phase_reject := self._reject_phase(task_cls, actives_cls):
+                    Task.objects.filter(state='waiting', cls_path=cls_path).exclude(
+                        phase=phase_reject
+                    ).update(phase=phase_reject)
+                    continue
+                startable.append(cls_path)
+
+            # the oldest waiting tasks of these classes start first
             for task in (
                 Task.objects.select_for_update(skip_locked=True)
-                .filter(state='waiting')
+                .filter(state='waiting', cls_path__in=startable)
                 .order_by('dt_created')[: self.prepare_batch]
             ):
-                if not task.cls:
-                    task.delete()
-                    continue
-
-                # if the task has already been interrupted - close it
-                if task.interrupt:
-                    task.set_done('interrupted')
-                    continue
-
-                # rejection status
-                phase_reject = None
-
-                # identity check
                 if any(
-                    [
-                        t.args == task.args and t.kwargs == task.kwargs
-                        for t in actives_cls[task.cls_path]
-                    ]
+                    t.args == task.args and t.kwargs == task.kwargs
+                    for t in actives_cls[task.cls_path]
                 ):
                     phase_reject = 'The task is already running. Waiting for completion'
-                # if the number of active tasks has exceeded the allowed level
-                elif len(actives_cls[task.cls_path]) >= task.cls.parallel:
-                    phase_reject = f'Maximum of {task.cls.parallel} similar tasks'
                 else:
-                    # determine blocking tasks
-                    blocked = [
-                        cls_block
-                        for cls_block in task.cls.blocked
-                        if len(actives_cls[cls_block]) > 0
-                    ]
-                    if blocked:
-                        phase_reject = 'Waiting for completion of tasks: {}'.format(', '.join(
-                            [cls_block for cls_block in blocked]
-                        ))
+                    # the limits change as tasks of this batch start
+                    phase_reject = self._reject_phase(task.cls, actives_cls)
 
-                # if there is a rejection status, and the current task status is different - update the status
                 if phase_reject:
                     # update the status only if it has been changed
                     if task.phase != phase_reject:

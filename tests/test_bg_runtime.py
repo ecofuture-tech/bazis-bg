@@ -130,3 +130,29 @@ def test_tasks_clean_deletes_files(settings, tmp_path):
     assert clean.is_success, clean.error
     assert not Task.objects.filter(pk=old.pk).exists()
     assert not os.path.exists(path)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_scheduler_blocked_backlog_does_not_starve_other_classes(monkeypatch):
+    """
+    More waiting tasks of a saturated class than the batch must not keep the tasks of other
+    classes from starting.
+    """
+    scheduler = Scheduler()
+    monkeypatch.setattr(Scheduler, 'prepare_batch', 3)
+    backlog = [LogMessage.delay(str(i)) for i in range(6)]
+    for i, task in enumerate(backlog):
+        Task.objects.filter(pk=task.pk).update(dt_created=now() - timedelta(hours=1, minutes=i))
+    scheduler.tasks_prepare()
+    # LogMessage.parallel == 2: the class is saturated now
+    assert Task.objects.filter(state='starting').count() == 2
+
+    export = ExportParents.delay()
+    scheduler.tasks_prepare()
+
+    export.refresh_from_db()
+    assert export.state == 'starting'
+    assert Task.objects.filter(cls_path=backlog[0].cls_path, state='starting').count() == 2
+    assert set(
+        Task.objects.filter(state='waiting').values_list('phase', flat=True)
+    ) == {'Maximum of 2 similar tasks'}
