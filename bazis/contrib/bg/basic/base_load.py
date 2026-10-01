@@ -57,12 +57,13 @@ class BgBaseLoad(BgBase):
             # extract the archive there
             with ZipFile(self.tmp_file) as zp:
                 zp.extractall(self.tmp_folder)
-            # get the list of paths
+            # get the list of paths (without the metadata that macOS adds to archives)
             files = sorted(
                 os.path.join(root, fn)
                 for root, _dirs, fns in os.walk(self.tmp_folder)
+                if '__MACOSX' not in os.path.relpath(root, self.tmp_folder).split(os.sep)
                 for fn in fns
-                if fn.endswith('.xlsx')
+                if fn.endswith('.xlsx') and not fn.startswith('._')
             )
             self.log.info('Received zip archive: %s', ', '.join(files))
         else:
