@@ -25,16 +25,20 @@ class BgTasksClean(BgBase):
     name = 'Background tasks cleanup'
     parallel = 1
 
-    def delete_tasks(self, qs):
-        # the files of the tasks are deleted from the storage first: the raw delete of the
-        # rows (fast, without signals) would leave them there forever
+    def delete_tasks(self, qs, chunk_size=1000):
+        # the rows are fixed first: a task that ages between the two queries would lose
+        # its row but keep its file. The files of the tasks are deleted from the storage,
+        # then the rows (raw delete: fast, without signals, which would leave the files)
+        pks = list(qs.values_list('pk', flat=True))
         storage = Task._meta.get_field('file').storage
-        for name in qs.exclude(file='').exclude(file=None).values_list('file', flat=True).iterator():
-            try:
-                storage.delete(name)
-            except Exception:  # NOQA [B902]
-                self.log.warning('The file %s of a task was not deleted', name)
-        qs._raw_delete(qs.db)
+        for i in range(0, len(pks), chunk_size):
+            chunk = Task.objects.filter(pk__in=pks[i : i + chunk_size])
+            for name in chunk.exclude(file='').exclude(file=None).values_list('file', flat=True):
+                try:
+                    storage.delete(name)
+                except Exception:  # NOQA [B902]
+                    self.log.warning('The file %s of a task was not deleted', name)
+            chunk._raw_delete(chunk.db)
 
     def handle(self):
         # get all manual tasks that have not been updated for longer than the specified period
