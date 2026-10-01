@@ -51,7 +51,7 @@ def rollback(using=None):
 
 def set_autocommit(autocommit, using=None):
     if not transaction.get_connection(using).in_atomic_block:
-        transaction.set_autocommit(autocommit, using=None)
+        transaction.set_autocommit(autocommit, using=using)
 
 
 class BgBaseMeta(type):
@@ -153,6 +153,11 @@ class BgBase(metaclass=BgBaseMeta):
         """
         error = None
         obj = None
+        # the log of the task collects all records logged while it runs; the handler is
+        # removed afterwards, since a handler process runs many tasks one after another
+        root_logger = logging.getLogger()
+        root_level = root_logger.level
+        log_handler = None
 
         try:
             obj = cls(*args, **kwargs)
@@ -173,9 +178,11 @@ class BgBase(metaclass=BgBaseMeta):
             obj._performed = None
             # create a logger specifically for the given task
             obj._log = StringIO()
-            obj.log = logging.getLogger()
-            obj.log.setLevel(logging.INFO)
-            obj.log.addHandler(BgLogHandler(obj._log))
+            obj.log = root_logger
+            if root_level == logging.NOTSET or root_level > logging.INFO:
+                root_logger.setLevel(logging.INFO)
+            log_handler = BgLogHandler(obj._log)
+            root_logger.addHandler(log_handler)
 
             # disable autocommit
             if cls.is_transaction:
@@ -251,6 +258,9 @@ class BgBase(metaclass=BgBaseMeta):
                         task.id,
                         traceback.format_exc(),
                     )
+            if log_handler is not None:
+                root_logger.removeHandler(log_handler)
+                root_logger.setLevel(root_level)
 
         # get the task for completion
         task = apps.get_model('bg.Task').objects.get(id=task.id)

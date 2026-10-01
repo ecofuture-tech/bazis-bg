@@ -33,16 +33,16 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "bazis>=2.2.0",
-    "bazis-author>=2.2.0",
-    "openpyxl~=3.1.2",
-    "psutil~=5.9.7",
-    "crontab~=1.0.1",
+    "bazis>=2.3.0",
+    "bazis-author>=2.3.0",
+    "openpyxl>=3.1.2",
+    "psutil>=5.9.7",
+    "crontab>=1.0.1",
 ]
 
 [project.optional-dependencies]
 test = [
-    "bazis-test-utils>=2.2.0"
+    "bazis-test-utils>=2.3.0"
 ]
 dev = [
     "ruff"
