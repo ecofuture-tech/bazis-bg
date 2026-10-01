@@ -87,9 +87,11 @@ class Command(BaseCommand):
                 break
 
             with transaction.atomic():
-                for task in Task.objects.select_for_update(skip_locked=True).filter(
-                    state='starting'
-                )[:1]:
+                for task in (
+                    Task.objects.select_for_update(skip_locked=True)
+                    .filter(state='starting')
+                    .order_by('dt_created')[:1]
+                ):
                     task.handler = handler
                     task.state = 'running'
                     task.phase = 'started'

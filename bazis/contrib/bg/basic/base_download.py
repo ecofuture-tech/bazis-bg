@@ -150,7 +150,7 @@ class Zip:
 
     def write(self, wbook):
         if not self.zp:
-            self.fp = NamedTemporaryFile(mode='w+', prefix='bg_download_zip.', delete=False)
+            self.fp = NamedTemporaryFile(mode='w+b', prefix='bg_download_zip.', delete=False)
             self.zp = ZipFile(self.fp, mode="w", compression=ZIP_DEFLATED, allowZip64=True)
 
         self.zp.writestr(f'{wbook.counter}.{wbook.get_name()}', wbook.fp.getvalue())
