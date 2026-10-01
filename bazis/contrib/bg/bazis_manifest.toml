@@ -1,0 +1,56 @@
+# What the package is for and how to use it, for tools and AI agents (see AGENTS.md).
+# `import` paths and `check` ids are verified by tests/test_manifest.py.
+
+[package]
+name = "bazis-bg"
+summary = "background tasks in PostgreSQL with a scheduler, periodic tasks and xlsx exports and imports"
+solves = [
+    "run long work outside the request (delay) with progress, logs, result and interruption",
+    "periodic tasks by interval or cron expression",
+    "limit the parallel tasks of a kind and make tasks wait for others",
+    "export querysets to xlsx and import xlsx files in the background",
+]
+requires = ["bazis", "bazis-users", "bazis-author"]
+pairs_well = []
+
+[[extension_points]]
+name = "BgBase"
+import = "bazis.contrib.bg.basic.base.BgBase"
+use_when = "a background task: handle(), queued with delay()"
+
+[[extension_points]]
+name = "BgBaseDownloadModel"
+import = "bazis.contrib.bg.basic.base_download_model.BgBaseDownloadModel"
+use_when = "export the objects of a model to xlsx (model, fields_read)"
+
+[[extension_points]]
+name = "BgBaseDownload"
+import = "bazis.contrib.bg.basic.base_download.BgBaseDownload"
+use_when = "export any rows to xlsx (get_queryset, get_count, get_titles)"
+
+[[extension_points]]
+name = "BgBaseLoad"
+import = "bazis.contrib.bg.basic.base_load.BgBaseLoad"
+use_when = "import the rows of an xlsx or zip file given as delay(fp=...) (load(reader))"
+
+[[extension_points]]
+name = "LoadDownloadAdminMixin"
+import = "bazis.contrib.bg.admin_abstract.LoadDownloadAdminMixin"
+use_when = "admin actions that start export, import or other tasks"
+
+[[extension_points]]
+name = "TaskCron"
+import = "bazis.contrib.bg.models.TaskCron"
+use_when = "a periodic task (period in seconds or a cron expression in UTC)"
+
+[[pitfalls]]
+text = "tasks run only while `manage.py bg_scheduler` runs (from the directory of manage.py)"
+
+[[pitfalls]]
+text = "with is_transaction, next_phase, progress syncs and set_result commit the work done so far"
+
+[[pitfalls]]
+text = "the scheduler deletes waiting tasks whose class path no longer imports"
+
+[[pitfalls]]
+text = "a task class without `name` cannot be queued and is not listed in the admin"
