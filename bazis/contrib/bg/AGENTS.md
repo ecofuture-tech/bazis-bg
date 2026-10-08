@@ -83,6 +83,14 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   The author is set by `delay(author=user)` or, inside the API routes, from the current
   user; tasks queued elsewhere (admin, scheduler, scripts) have no author and only staff
   see them. Keep custom task routes as restrictive.
+- The rule is the classmethod `BgRoute.restrict_queryset` (none for an anonymous user; the
+  authenticated user of the request `UserMixin.CTX_USER_REQUEST` when the caller passes
+  no user): as the default route of `bg.Task` it is also what the other routes link and
+  include (the core, Bazis 2.7). A model with a foreign key to `bg.Task` (the sample
+  `entity.Report`) links only the tasks the user sees (403 `ERR_RELATION_ACCESS`
+  otherwise) and `include` leaves out the others; its route set needs no checks of its
+  own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
+  declares `default_route = True`.
 - A task class is found by its path (`module.Class`): the scheduler deletes waiting tasks
   whose class does not import, so keep the path when tasks may be queued.
 - A task with the same arguments as a running task of its class waits for it.

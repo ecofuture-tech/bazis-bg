@@ -62,3 +62,20 @@ class ParentEntity(DtMixin, UuidMixin, JsonApiMixin, ParentEntityBase):
     class Meta:
         verbose_name = _('Parent entity')
         verbose_name_plural = _('Parent entities')
+
+
+class Report(DtMixin, UuidMixin, JsonApiMixin):
+    """
+    A report that references the background task that built it: a user links only a task
+    he can see (his own, any for staff) and reads it with `include=task` (the core checks
+    the relationship and `included` against the default route of the tasks).
+    """
+
+    title = models.CharField(_('Title'), max_length=255)
+    task = models.ForeignKey(
+        'bg.Task', blank=True, null=True, on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        verbose_name = _('Report')
+        verbose_name_plural = _('Reports')

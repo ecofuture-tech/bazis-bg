@@ -47,6 +47,9 @@ use_when = "a periodic task (period in seconds or a cron expression in UTC)"
 text = "tasks run only while `manage.py bg_scheduler` runs (from the directory of manage.py)"
 
 [[pitfalls]]
+text = "BgRoute.restrict_queryset (own tasks, all for staff) is also what the other routes link and include: a custom task route changes the rule there (default_route = True), not only in get_queryset"
+
+[[pitfalls]]
 text = "with is_transaction, next_phase, progress syncs and set_result commit the work done so far"
 
 [[pitfalls]]
