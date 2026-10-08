@@ -86,7 +86,10 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
 - The rule is the classmethod `BgRoute.restrict_queryset` (none for an anonymous user; the
   authenticated user of the request `UserMixin.CTX_USER_REQUEST` when the caller passes
   no user): as the default route of `bg.Task` it is also what the other routes link and
-  include (the core, Bazis 2.7). A model with a foreign key to `bg.Task` (the sample
+  include (the core, Bazis 2.7). `CTX_USER_REQUEST` is set by the routes of bazis-users
+  (`UserRouteBase`) and its Django middleware: on a route without a user (a plain
+  `JsonapiRouteBase`) a logged-in user is anonymous for the tasks (403 for his own task,
+  left out of `included`). A model with a foreign key to `bg.Task` (the sample
   `entity.Report`) links only the tasks the user sees (403 `ERR_RELATION_ACCESS`
   otherwise) and `include` leaves out the others; its route set needs no checks of its
   own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
