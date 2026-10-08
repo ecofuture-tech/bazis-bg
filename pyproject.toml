@@ -42,6 +42,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+    # the sample registers the token endpoint of bazis-users (bazis.contrib.users.token)
+    "bazis-users>=2.6.1",
     "bazis-test-utils>=2.3.0"
 ]
 dev = [
