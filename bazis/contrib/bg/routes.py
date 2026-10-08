@@ -13,21 +13,42 @@
 # limitations under the License.
 
 from django.apps import apps
+from django.db.models import QuerySet
 
 from bazis.contrib.author.routes_abstract import AuthorRequiredRouteBase
+from bazis.contrib.users.models_abstract import UserMixin
+from bazis.core.routes_abstract.jsonapi import RestrictedQsRouteMixin
+from bazis.core.schemas import AccessAction, CrudAccessAction
 
 
-class BgRoute(AuthorRequiredRouteBase):
+class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     """
     The background tasks of the user (staff see all tasks): their arguments, logs and files
-    are private.
+    are private. As the default route of the tasks, its `restrict_queryset` is also what
+    the other routes link and include (bazis 2.7).
     """
 
     model = apps.get_model('bg.Task')
     actions = ['action_list', 'action_retrieve']
 
+    @classmethod
+    def restrict_queryset(
+        cls, qs: QuerySet, access_action: AccessAction, user=None, **kwargs
+    ) -> QuerySet:
+        """
+        The tasks of the user, all tasks for staff, for every action. Without a user (a
+        route without a user, e.g. called by the core for the relationships of another
+        route) the authenticated user of the request (`UserMixin.CTX_USER_REQUEST`); none
+        for an anonymous user.
+        """
+        if user is None:
+            user = UserMixin.CTX_USER_REQUEST.get()
+        if user is None or user.is_anonymous:
+            return qs.none()
+        qs = super().restrict_queryset(qs, access_action, user=user, **kwargs)
+        return qs if user.is_staff else qs.filter(author=user)
+
     def get_queryset(self):
-        queryset = super().get_queryset()
-        if not self.inject.user.is_staff:
-            queryset = queryset.filter(author=self.inject.user)
-        return queryset
+        return self.restrict_queryset(
+            super().get_queryset(), CrudAccessAction.VIEW, user=self.inject.user
+        )

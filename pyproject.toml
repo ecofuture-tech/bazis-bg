@@ -33,7 +33,7 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "bazis>=2.4.0",
+    "bazis>=2.7.0",
     "bazis-author>=2.3.0",
     "openpyxl>=3.1.2",
     "psutil>=5.9.7",

@@ -14,6 +14,7 @@
 
 from django.apps import apps
 
+from bazis.contrib.users.routes_abstract import UserRequiredRouteBase
 from bazis.core.routes_abstract.jsonapi import JsonapiRouteBase
 from bazis.core.schemas import SchemaFields
 
@@ -47,3 +48,13 @@ class ParentEntityRouteSet(JsonapiRouteBase):
             include={'extended_entity': None, 'dependent_entities': None},
         ),
     }
+
+
+class ReportRouteSet(UserRequiredRouteBase):
+    """
+    The reports: every user who is logged in reads and changes them all. The tasks they
+    link and include are restricted by the default route of the tasks (BgRoute), the route
+    set has no checks of its own.
+    """
+
+    model = apps.get_model('entity.Report')
