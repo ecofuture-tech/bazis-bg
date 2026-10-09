@@ -61,6 +61,44 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   rows). Imports: `BgBaseLoad` reads the `.xlsx` (or `.zip` of them) given as `delay(fp=...)` and passes
   the rows as dicts keyed by `fields_read` to `load(reader)`; `skip_titles = True` skips
   the header row.
+- An export for the user of a request (an action of a route): the task runs in the
+  handler process, without the request, its user or its language. Queue it with JSON
+  arguments (ids, ISO dates) and `author=user`, so that the user reads the task and its
+  file at `/api/v1/bg/task/{id}/`; restrict the rows with the `restrict_queryset` of the
+  default route of the model for that user; write the texts in the language of the
+  request:
+
+  ```python
+  # the route: @http_post('/export/', kind=RouteKind.OTHER) def action_export(self, ...)
+  task = OrdersExport.delay(user_id=str(user.pk), language=get_language(), author=user)
+
+  class OrdersExport(BgBaseDownload):
+      name = 'Orders'
+      fields_read = ['number', 'title']
+      file_name = 'orders'
+
+      def __init__(self, user_id, language):
+          self.user = get_user_model().objects.get(pk=user_id)
+          self.language = language
+
+      def handle(self):
+          with translation.override(self.language):
+              super().handle()
+
+      def get_titles(self):           # column titles (lazy texts are written translated)
+          return {'number': _('Number'), 'title': _('Title')}
+
+      def queryset(self):
+          qs = OrderRouteSet.restrict_queryset(Order.objects.all(), CrudAccessAction.VIEW,
+                                               user=self.user)
+          return qs.order_by('number')
+
+      def get_count(self):            # required: the expected number of rows
+          return self.queryset().count()
+
+      def get_queryset(self):         # objects or dicts keyed by fields_read
+          return self.queryset()
+  ```
 - Admin: `LoadDownloadAdminMixin` with `tasks_download`, `tasks_load`, `tasks_handler`
   (task classes, in the admin class body) adds actions that start them without arguments
   (`tasks_load` with the uploaded file).
@@ -94,6 +132,10 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   otherwise) and `include` leaves out the others; its route set needs no checks of its
   own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
   declares `default_route = True`.
+- `BgRoute` and its subclasses restrict the tasks with their own `restrict_queryset`:
+  `permit.W002` of bazis-permit does not apply to them from bazis-permit 2.10 (do not
+  declare `permit_public = True`, which says the data is public). With bazis-permit 2.9
+  the warning is a false positive.
 - A task class is found by its path (`module.Class`): the scheduler deletes waiting tasks
   whose class does not import, so keep the path when tasks may be queued.
 - A task with the same arguments as a running task of its class waits for it.
