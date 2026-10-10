@@ -39,9 +39,14 @@ import = "bazis.contrib.bg.admin_abstract.LoadDownloadAdminMixin"
 use_when = "admin actions that start export, import or other tasks"
 
 [[extension_points]]
+name = "Schedule"
+import = "bazis.contrib.bg.declare.Schedule"
+use_when = "a periodic task of a product (period in seconds or a cron expression in UTC): SCHEDULES in <app>/schedules.py, applied by migrate"
+
+[[extension_points]]
 name = "TaskCron"
 import = "bazis.contrib.bg.models.TaskCron"
-use_when = "a periodic task (period in seconds or a cron expression in UTC)"
+use_when = "the periodic tasks in the database: declared ones (managed) and those of the admin"
 
 [[pitfalls]]
 text = "tasks run only while `manage.py bg_scheduler` runs (from the directory of manage.py)"
@@ -63,3 +68,11 @@ text = "the scheduler deletes waiting tasks whose class path no longer imports"
 
 [[pitfalls]]
 text = "a task class without `name` cannot be queued and is not listed in the admin"
+
+[[pitfalls]]
+text = "declare a periodic task in <app>/schedules.py, not with get_or_create in a data migration: the migration runs once, so a new period in the code never reaches the database"
+check = "bg.W001"
+
+[[pitfalls]]
+text = "a declared schedule names a named BgBase class and JSON kwargs that fit its __init__"
+check = "bg.E002"

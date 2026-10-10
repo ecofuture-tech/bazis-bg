@@ -33,7 +33,7 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "bazis>=2.7.0",
+    "bazis>=2.7.0",  # raise to >=2.16.0 at the release: bazis.core.declare (the schedules)
     "bazis-author>=2.3.0",
     "openpyxl>=3.1.2",
     "psutil>=5.9.7",
@@ -44,7 +44,7 @@ dependencies = [
 test = [
     # the sample registers the token endpoint of bazis-users (bazis.contrib.users.token)
     "bazis-users>=2.6.1",
-    "bazis-test-utils>=2.3.0"
+    "bazis-test-utils>=2.3.0"  # raise to >=2.5.2 at the release: bazis_declared applies the schedules
 ]
 dev = [
     "ruff"

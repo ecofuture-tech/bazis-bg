@@ -25,7 +25,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from bazis.contrib.author.admin_abstract import AuthorAdminMixin
-from bazis.core.admin_abstract import AutocompleteMixin, DtAdminMixin
+from bazis.core.admin_abstract import AutocompleteMixin, DtAdminMixin, ManagedAdminMixin
 
 from . import REGISTRY_BG_TASKS
 from .admin_tags import button_action, history, progress, spoiler
@@ -312,13 +312,27 @@ class TaskCronForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['cls_path'].choices = [
-            (bg_path, bg_cls.get_name()) for bg_path, bg_cls in REGISTRY_BG_TASKS.items()
-        ]
+        if 'cls_path' in self.fields:  # read-only for a declared periodic task
+            self.fields['cls_path'].choices = [
+                (bg_path, bg_cls.get_name()) for bg_path, bg_cls in REGISTRY_BG_TASKS.items()
+            ]
 
 
-class TaskCronAdminBase(DtAdminMixin, AutocompleteMixin, AuthorAdminMixin, admin.ModelAdmin):
-    list_display = ('name', 'cls_path', 'period', 'dt_run', 'is_enable')
+class TaskCronAdminBase(
+    ManagedAdminMixin, DtAdminMixin, AutocompleteMixin, AuthorAdminMixin, admin.ModelAdmin
+):
+    """
+    The periodic tasks declared in a schedules.py module (bazis.contrib.bg.declare) are
+    read-only, besides their next run time and environment, and are not deleted.
+    """
+
+    list_display = ('name', 'slug', 'cls_path', 'period', 'dt_run', 'is_enable', 'managed')
     list_editable = ('is_enable',)
     ordering = ['name']
     form = TaskCronForm
+    managed_editable = ('dt_run', 'envs')
+
+    def declared_slugs(self) -> set[str]:
+        from .declare import declared_slugs
+
+        return declared_slugs()

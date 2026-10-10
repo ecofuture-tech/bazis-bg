@@ -343,7 +343,32 @@ task = DataProcessingTask.delay_sync(param1='value1')
 
 ### Periodic Tasks
 
+#### Declared in the code
+
+The periodic tasks of a product are declared in the `schedules.py` module of an
+application; `migrate` creates or updates them (`TaskCron`, marked `managed`), takes over
+an unmarked one of the same slug with a warning and disables a managed one no longer
+declared:
+
+```python
+# myapp/schedules.py
+from django.utils.translation import gettext_lazy as _
+from bazis.contrib.bg.declare import Schedule
+
+SCHEDULES = [
+    Schedule('data_processing', 'myapp.tasks.DataProcessingTask', '0 3 * * *',
+             _('Data processing'), kwargs={'param1': 'value1'}),
+]
+```
+
+Do not create them with `get_or_create` in a data migration: it runs once, so a new period
+in the code never reaches a database that has the row. The system checks `bg.E001` and
+`bg.E002` validate the declarations, `bg.W001` (with a database, `bazis_doctor`) reports a
+database that differs from them. The admin shows a declared periodic task read-only.
+
 #### Through Django Admin
+
+For periodic tasks that are data of an installation rather than of the product:
 
 1. Open "Periodic Tasks" section
 2. Create new task:

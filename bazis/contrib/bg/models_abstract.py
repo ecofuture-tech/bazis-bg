@@ -136,6 +136,11 @@ class TaskCronBase(TaskBaseModel):
     period = models.CharField('Period value', max_length=100)
     dt_run = models.DateTimeField('Next run time', null=True, blank=True)
     is_enable = models.BooleanField('Enabled', default=True, db_index=True)
+    #: the slug of a schedule declared in a `schedules.py` module (bazis.contrib.bg.declare)
+    slug = models.CharField('Slug', max_length=255, unique=True, null=True, blank=True)
+    #: declared in a `schedules.py` module of an application: `migrate` keeps it as
+    #: declared, the admin does not change it
+    managed = models.BooleanField('Managed by the code', default=False, editable=False)
 
     class Meta:
         abstract = True

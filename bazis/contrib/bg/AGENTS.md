@@ -105,10 +105,46 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
 
 ## Periodic tasks and cleanup
 
-- `TaskCron(name, cls_path, args, kwargs, period, is_enable)` in the admin or in code:
-  `period` is seconds after the previous run finished (`"3600"`) or a cron expression in
-  UTC (`"0 3 * * *"`); an invalid one is written to its `error`. Setting `dt_run` runs it
-  at that time.
+A periodic task of a product is declared in the `schedules.py` module of an application,
+not in the admin nor in a data migration:
+
+```python
+# training/schedules.py
+from django.utils.translation import gettext_lazy as _
+from bazis.contrib.bg.declare import Schedule
+
+SCHEDULES = [
+    Schedule('deadlines_remind', 'training.bg.deadlines.RemindDeadlines', '0 6 * * *',
+             _('Deadline reminders'), kwargs={'days': 3}),
+    Schedule('stats_refresh', StatsRefresh, 3600),      # the class, or its path
+]
+```
+
+- `Schedule(slug, task, period, name=None, kwargs={}, enabled=True)`: `task` is a `BgBase`
+  class with a `name` (or its path `module.Class`); `period` is seconds after the previous
+  run finished (`3600`, `"3600"`) or a cron expression in UTC (`"0 3 * * *"`); `name` an
+  English msgid stored in `LANGUAGE_CODE` (the name of the task class without it);
+  `kwargs` the JSON keyword arguments of the task (not `name`, `fp`, `author`, `envs`).
+- `migrate` applies them (`post_migrate`, also sent by `flush`) once all the migrations of
+  the project are applied, in one transaction: the periodic task (`TaskCron`) of each slug
+  is created or updated as declared and marked `managed`; a new period or `enabled`
+  resets its next run time. Applied again it writes nothing. A periodic task of the slug
+  that exists unmarked (made in the admin) is taken over with a warning in the log. A
+  managed one no longer declared is disabled and becomes an ordinary periodic task (not
+  deleted: its tasks reference it). Periodic tasks made in the admin are left as they are.
+- A data migration with `TaskCron.objects.get_or_create(...)` is the wrong tool: it runs
+  once, so a new period in the code never reaches a database that has the row, and it
+  depends on the migrations of the package.
+- The admin shows a declared periodic task read-only besides `dt_run` (setting it runs the
+  task at that time) and `envs`, and does not delete it.
+- Checks: `bg.E001` (the slug, a duplicate, the name, the period, the kwargs, `enabled`),
+  `bg.E002` (the task class does not import, is not a named `BgBase`, or the kwargs do not
+  fit its `__init__`); with a database (`bazis_doctor`) `bg.W001` (the database differs
+  from the declarations: run `migrate`).
+- Tests: the migrated test database has them; `bazis_test_utils` (`apply_declarations()`,
+  the fixture `bazis_declared`) applies them again for a test that changes them.
+- `bazis.contrib.bg.declare.apply_declarations(using, schedules=None, dry_run=False)`
+  returns the changes; `dry_run` only lists them.
 - `python manage.py cleanup_init` creates the cleanup cron task: it deletes the tasks (and
   their files) not updated for `BAZIS_TASK_LIFETIME` (manual) or `BAZIS_TASK_CRON_LIFETIME`
   (periodic) seconds; its period is `BAZIS_TASK_CRON_CLEANUP` when the command runs. These

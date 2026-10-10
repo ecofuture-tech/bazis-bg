@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from django.apps import apps
+from django.db.models.signals import post_migrate
 
 from bazis.core.apps import BaseConfig
 from bazis.core.utils.imp import import_module, pkg_load
@@ -34,3 +35,8 @@ class BgConfig(BaseConfig):
             else:
                 pkg_load(bg_pkg)
 
+        from . import checks  # noqa: F401  registers the system checks
+        from .declare import post_migrate_apply
+
+        # the schedules of the schedules.py modules, once per migrate or flush
+        post_migrate.connect(post_migrate_apply, sender=self, dispatch_uid='bg_declarations')
