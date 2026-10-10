@@ -74,7 +74,7 @@ text = "declare a periodic task in <app>/schedules.py, not with get_or_create in
 check = "bg.W001"
 
 [[pitfalls]]
-text = "a periodic task made earlier by a data migration or in the admin has no slug: before declaring it in schedules.py give its row the slug of the schedule (admin, or a data migration filter(cls_path=..., slug=None).update(slug=...)) or delete it, else it runs twice"
+text = "a periodic task made earlier by a get_or_create data migration or in the admin has no slug: declared in schedules.py it runs twice; delete the old row (admin, or a data migration TaskCron.objects.filter(cls_path=..., slug=None).delete()) and let the declaration own the schedule; its tasks are kept, unlinked"
 check = "bg.W002"
 
 [[pitfalls]]

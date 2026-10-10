@@ -61,9 +61,9 @@ def check_declarations_applied(app_configs, databases=None, **kwargs):
                     f'The database {using} has enabled periodic tasks that are not managed and '
                     f'run a declared schedule again: {"; ".join(found)}.',
                     hint=(
-                        'Give the existing periodic task the slug of the schedule (the admin, or '
-                        'a data migration: filter(cls_path=..., slug=None).update(slug=...)), so '
-                        'that migrate takes it over, or delete it.'
+                        'Delete the old periodic task and let the declaration own the schedule: '
+                        'in the admin, or with a data migration '
+                        '(TaskCron.objects.filter(cls_path=..., slug=None).delete()).'
                     ),
                     id='bg.W002',
                 )

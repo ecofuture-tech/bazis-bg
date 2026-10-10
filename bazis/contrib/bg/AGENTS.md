@@ -142,28 +142,30 @@ SCHEDULES = [
   depends on the migrations of the package.
 - Moving a periodic task made by such a migration (or in the admin) to `schedules.py`: its
   row has no slug, so the schedule creates a second enabled one and the task runs twice
-  (`bg.W002` reports it). Give the existing row the slug of the schedule, so that
-  `migrate` takes it over (keeping its tasks), in the admin or in a data migration of the
-  product that runs before (`migrate` applies the schedules after the last migration):
+  (`bg.W002` reports it). Delete the old row and let the declaration own the schedule: in
+  the admin, or with a data migration of the product (keep the old migration; this works
+  whether `migrate` has already created the declared row or not, as that one has a slug):
 
   ```python
-  def adopt(apps, schema_editor):
+  def delete_old_cron(apps, schema_editor):
       apps.get_model('bg', 'TaskCron').objects.filter(
           cls_path='training.bg.deadlines.RemindDeadlines', slug=None,
-      ).update(slug='deadlines_remind')
+      ).delete()
 
   # depends on the old get_or_create migration and on ('bg', '0006_taskcron_slug_managed')
-  operations = [migrations.RunPython(adopt, migrations.RunPython.noop)]
+  operations = [migrations.RunPython(delete_old_cron, migrations.RunPython.noop)]
   ```
 
-  or delete it (in the admin, or with a data migration in place of the old one).
+  Add `kwargs={...}` to the filter if other periodic tasks of the admin run the same class.
+  The tasks the old row started are kept but no longer linked to a periodic task
+  (`on_delete=SET_NULL`): the cleanup counts them as manual tasks (`BAZIS_TASK_LIFETIME`).
 - The admin shows a declared periodic task read-only besides `dt_run` (setting it runs the
   task at that time) and `envs`, and does not delete it.
 - Checks: `bg.E001` (the slug, a duplicate, the name, the period, the kwargs, `enabled`),
   `bg.E002` (the task class does not import, is not a named `BgBase`, or the kwargs do not
   fit its `__init__`); with a database (`bazis_doctor`) `bg.W001` (the database differs
   from the declarations: run `migrate`) and `bg.W002` (an enabled periodic task that is
-  not managed runs the task of a schedule with its kwargs: give it the slug or delete it).
+  not managed runs the task of a schedule with its kwargs: delete it).
 - Tests: the migrated test database has them; `bazis_test_utils` (`apply_declarations()`,
   the fixture `bazis_declared`) applies them again for a test that changes them.
 - `bazis.contrib.bg.declare.apply_declarations(using, schedules=None, dry_run=False)`

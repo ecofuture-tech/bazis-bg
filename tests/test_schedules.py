@@ -22,6 +22,8 @@ from datetime import timedelta
 
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ImproperlyConfigured
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.test import RequestFactory
 from django.utils.timezone import now
 
@@ -255,37 +257,60 @@ def test_the_admin_keeps_declared_periodic_tasks_read_only(admin_user):
     assert set(form.fields) == {'dt_run', 'envs'}
 
 
+def delete_old_cron(apps, schema_editor):
+    """
+    The recipe of the guide, for the task of the sample schedule.
+    """
+    apps.get_model('bg', 'TaskCron').objects.filter(
+        cls_path='entity.bg.calc_data.LogMessage', slug=None,
+    ).delete()
+
+
 @pytest.mark.django_db
-def test_a_periodic_task_of_a_data_migration_runs_a_schedule_again():
+@pytest.mark.parametrize('declared_applied', [True, False], ids=['declared_row_exists', 'fresh'])
+def test_a_periodic_task_of_a_data_migration_runs_a_schedule_again(declared_applied):
     """
     A periodic task made by a `get_or_create` data migration (no slug) and then declared:
-    the schedule creates a second one, bg.W002 reports it until the old row gets the slug
-    (the recipe of the guide) or is deleted.
+    the schedule creates a second one, bg.W002 reports it. The recipe of the guide (a data
+    migration that deletes the old row) works whether `migrate` already created the declared
+    row (a database where the schedule was applied) or not (it runs before the schedules
+    are applied); the tasks of the old row are kept, unlinked.
     """
+    if not declared_applied:
+        TaskCron.objects.filter(slug='entity_log_hourly').delete()
     old = TaskCron.objects.create(
         name='Hourly', cls_path=LOG_MESSAGE, period='3600', kwargs={'message': 'hourly'}
     )
-    # the other periodic tasks of the admin are not duplicates: other kwargs, disabled
+    old_task = LogMessage.delay('hourly')
+    Task.objects.filter(pk=old_task.pk).update(task_cron=old)
+
+    if declared_applied:
+        [warning] = check_declarations_applied(None, databases=['default'])
+        assert warning.id == 'bg.W002'
+        assert f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly' in warning.msg
+        assert 'filter(cls_path=..., slug=None).delete()' in warning.hint
+    assert declare.duplicates() == [f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly']
+
+    # the data migration, with the models of the migrations
+    delete_old_cron(MigrationExecutor(connection).loader.project_state().apps, None)
+    changes = apply_declarations()
+
+    assert changes == ([] if declared_applied else ['taskcron entity_log_hourly: created'])
+    assert list(TaskCron.objects.filter(cls_path=LOG_MESSAGE).values_list('slug', flat=True)) == [
+        'entity_log_hourly'
+    ]
+    assert Task.objects.get(pk=old_task.pk).task_cron is None
+    assert declare.duplicates() == []
+    assert check_declarations_applied(None, databases=['default']) == []
+
+
+@pytest.mark.django_db
+def test_other_periodic_tasks_of_the_class_are_not_duplicates():
     TaskCron.objects.create(name='Other', cls_path=LOG_MESSAGE, period='60', kwargs={'message': 'x'})
     TaskCron.objects.create(
         name='Off', cls_path=LOG_MESSAGE, period='60', kwargs={'message': 'hourly'}, is_enable=False
     )
-
-    [warning] = check_declarations_applied(None, databases=['default'])
-    assert warning.id == 'bg.W002'
-    assert f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly' in warning.msg
-    assert 'update(slug=...)' in warning.hint
-    assert declare.duplicates() == [f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly']
-
-    # the recipe: the declared row is replaced by the old one, which migrate takes over
-    TaskCron.objects.filter(slug='entity_log_hourly').delete()
-    TaskCron.objects.filter(
-        cls_path=LOG_MESSAGE, slug=None, kwargs={'message': 'hourly'}, is_enable=True
-    ).update(slug='entity_log_hourly')
-    assert apply_declarations() == ['taskcron entity_log_hourly: name, managed changed']
-    assert TaskCron.objects.get(slug='entity_log_hourly').pk == old.pk
     assert declare.duplicates() == []
-    assert check_declarations_applied(None, databases=['default']) == []
 
 
 @pytest.mark.django_db

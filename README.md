@@ -363,10 +363,11 @@ SCHEDULES = [
 
 Do not create them with `get_or_create` in a data migration: it runs once, so a new period
 in the code never reaches a database that has the row. To move such a periodic task (or one
-made in the admin) to `schedules.py`, give its row the slug of the schedule, in the admin
-or in a data migration that depends on `('bg', '0006_taskcron_slug_managed')`
-(`TaskCron.objects.filter(cls_path='myapp.tasks.DataProcessingTask', slug=None).update(slug='data_processing')`),
-so that `migrate` takes it over, or delete it: otherwise both rows run the task.
+made in the admin) to `schedules.py`, delete its old row (it has no slug) and let the
+declaration own the schedule, otherwise both rows run the task: in the admin, or with a
+data migration that depends on the old one and on `('bg', '0006_taskcron_slug_managed')`
+(`apps.get_model('bg', 'TaskCron').objects.filter(cls_path='myapp.tasks.DataProcessingTask', slug=None).delete()`).
+The tasks of the old row are kept, no longer linked to a periodic task.
 
 A managed periodic task no longer declared is disabled and becomes an ordinary one, which
 the admin may enable again (the roles of bazis-permit stay managed instead). The name is
