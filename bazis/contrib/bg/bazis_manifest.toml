@@ -58,6 +58,9 @@ text = "BgRoute.restrict_queryset (own tasks, all for staff) is also what the ot
 text = "a task runs in the handler process without the request, its user or its language: an export for a user gets his id and the language as JSON arguments of delay(), author=user (so that he reads the task), restricts the rows with the restrict_queryset of the default route of the model for him and wraps handle() in translation.override"
 
 [[pitfalls]]
+text = "the file of a task (an export with personal data) is downloaded from GET /api/v1/bg/task/{id}/download/ (the author and staff): the file attribute is a media URL served to anyone who has it"
+
+[[pitfalls]]
 text = "BgRoute and its subclasses restrict the tasks with their own restrict_queryset: permit.W002 does not apply to them from bazis-permit 2.10; do not declare permit_public = True"
 
 [[pitfalls]]

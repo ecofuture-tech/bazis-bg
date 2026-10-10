@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import re
+import secrets
+
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models
@@ -24,8 +28,30 @@ from bazis.core.utils.imp import import_class
 from bazis.core.utils.orm import JsonFieldEncoder
 
 
+#: the stored name of a task file: a random token (the url-safe base64 of 16 bytes, 22
+#: characters), `_` and the name of the file. Not a dot: the storage shortens a name too
+#: long for the field in the part before its first dot
+TASK_FILE_TOKEN = re.compile(r'^[A-Za-z0-9_-]{22}_(?P<name>.+)$')
+
+
 def task_file_name(obj, fn):
-    return f'{settings.BAZIS_TASK_FOLDER}/{fn}'
+    """
+    The stored name of a task file: `<BAZIS_TASK_FOLDER>/<token>_<name>`. The random token
+    keeps the file from being guessed on the media host, which serves it without a check:
+    an export holds personal data. The API serves it to the author of the task and staff
+    (`BgRoute.action_download`).
+    """
+    return f'{settings.BAZIS_TASK_FOLDER}/{secrets.token_urlsafe(16)}_{os.path.basename(fn)}'
+
+
+def task_file_download_name(name: str) -> str:
+    """
+    The name of a stored task file without its folder and token (`task_file_name`); a file
+    stored before the token (bazis-bg 2.5) keeps its name.
+    """
+    name = os.path.basename(name)
+    match = TASK_FILE_TOKEN.match(name)
+    return match['name'] if match else name
 
 
 if settings.BAZIS_STORAGE_BG:

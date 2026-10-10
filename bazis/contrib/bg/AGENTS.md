@@ -19,7 +19,10 @@ xlsx exports and imports. Needs bazis-author (tasks have an `author`).
 - `python manage.py bg_task --task_id <id>` runs one task in the current process (tests,
   debugging).
 - Files of tasks: `BS_BAZIS_STORAGE_BG` (import path of a storage class; default the file
-  system storage in `MEDIA_ROOT`), in the folder `BAZIS_TASK_FOLDER` (`bg`).
+  system storage in `MEDIA_ROOT`), in the folder `BAZIS_TASK_FOLDER` (`bg`), stored as
+  `<token>_<name>` with a random token (the media host serves them without a check, the
+  token keeps their names from being guessed). Clients download them from
+  `GET /api/v1/bg/task/{id}/download/` (see Rules).
 
 ## Tasks
 
@@ -63,10 +66,10 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   the header row.
 - An export for the user of a request (an action of a route): the task runs in the
   handler process, without the request, its user or its language. Queue it with JSON
-  arguments (ids, ISO dates) and `author=user`, so that the user reads the task and its
-  file at `/api/v1/bg/task/{id}/`; restrict the rows with the `restrict_queryset` of the
-  default route of the model for that user; write the texts in the language of the
-  request:
+  arguments (ids, ISO dates) and `author=user`, so that the user reads the task at
+  `/api/v1/bg/task/{id}/` and downloads its file from `/api/v1/bg/task/{id}/download/`;
+  restrict the rows with the `restrict_queryset` of the default route of the model for
+  that user; write the texts in the language of the request:
 
   ```python
   # the route: @http_post('/export/', kind=RouteKind.OTHER) def action_export(self, ...)
@@ -193,6 +196,13 @@ SCHEDULES = [
   otherwise) and `include` leaves out the others; its route set needs no checks of its
   own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
   declares `default_route = True`.
+- `GET /api/v1/bg/task/{id}/download/` serves the file of a task the user sees (401 for an
+  anonymous user, 404 for another user's task, a task without a file or a file missing from
+  the storage) as a download named after the file without its token, with `nosniff`,
+  `Content-Security-Policy: sandbox` and `Cache-Control: private, no-store`. Link the
+  file to this route, not to the `file` attribute: that is the URL of the media host,
+  which serves it to anyone who has the link. A custom task route that lists its
+  `actions` adds `action_download`.
 - `BgRoute` and its subclasses restrict the tasks with their own `restrict_queryset`:
   `permit.W002` of bazis-permit does not apply to them from bazis-permit 2.10 (do not
   declare `permit_public = True`, which says the data is public). With bazis-permit 2.9

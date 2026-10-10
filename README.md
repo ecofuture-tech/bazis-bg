@@ -491,6 +491,9 @@ class VehicleDownload(BgBaseDownloadModel):
     # verbose_name of fields will be picked up automatically
 ```
 
+The file of a task is stored as `bg/<random token>_<name>` and downloaded by the author
+of the task (or staff) from `GET /api/v1/bg/task/{id}/download/`.
+
 ### Data Import
 
 ```python

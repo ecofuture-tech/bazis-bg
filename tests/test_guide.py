@@ -80,7 +80,7 @@ def test_export_for_the_user_of_a_request(settings, tmp_path, monkeypatch):
     task.refresh_from_db()
 
     assert task.is_success, task.error
-    # the user reads his task (and its file) through the task route
+    # the user reads his task (and downloads its file) through the task route
     visible = BgRoute.restrict_queryset(Task.objects.all(), CrudAccessAction.VIEW, user=user)
     assert visible.filter(pk=task.pk).exists()
     rows = list(load_workbook(task.file.path).active.values)
