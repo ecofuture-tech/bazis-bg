@@ -125,22 +125,45 @@ SCHEDULES = [
   run finished (`3600`, `"3600"`) or a cron expression in UTC (`"0 3 * * *"`); `name` an
   English msgid stored in `LANGUAGE_CODE` (the name of the task class without it);
   `kwargs` the JSON keyword arguments of the task (not `name`, `fp`, `author`, `envs`).
+  `TaskCron.name` is one column: the declared name is stored translated into
+  `LANGUAGE_CODE` (a new `LANGUAGE_CODE` renames it at the next `migrate`).
 - `migrate` applies them (`post_migrate`, also sent by `flush`) once all the migrations of
   the project are applied, in one transaction: the periodic task (`TaskCron`) of each slug
   is created or updated as declared and marked `managed`; a new period or `enabled`
   resets its next run time. Applied again it writes nothing. A periodic task of the slug
   that exists unmarked (made in the admin) is taken over with a warning in the log. A
-  managed one no longer declared is disabled and becomes an ordinary periodic task (not
-  deleted: its tasks reference it). Periodic tasks made in the admin are left as they are.
+  managed one no longer declared is disabled and unmarked: an ordinary periodic task the
+  admin may enable again, not deleted (its tasks reference it). This differs from the
+  roles of bazis-permit and the transits of bazis-statusy, which stay managed with a
+  warning: a periodic task left enabled would keep running. Periodic tasks made in the
+  admin are left as they are.
 - A data migration with `TaskCron.objects.get_or_create(...)` is the wrong tool: it runs
   once, so a new period in the code never reaches a database that has the row, and it
   depends on the migrations of the package.
+- Moving a periodic task made by such a migration (or in the admin) to `schedules.py`: its
+  row has no slug, so the schedule creates a second enabled one and the task runs twice
+  (`bg.W002` reports it). Give the existing row the slug of the schedule, so that
+  `migrate` takes it over (keeping its tasks), in the admin or in a data migration of the
+  product that runs before (`migrate` applies the schedules after the last migration):
+
+  ```python
+  def adopt(apps, schema_editor):
+      apps.get_model('bg', 'TaskCron').objects.filter(
+          cls_path='training.bg.deadlines.RemindDeadlines', slug=None,
+      ).update(slug='deadlines_remind')
+
+  # depends on the old get_or_create migration and on ('bg', '0006_taskcron_slug_managed')
+  operations = [migrations.RunPython(adopt, migrations.RunPython.noop)]
+  ```
+
+  or delete it (in the admin, or with a data migration in place of the old one).
 - The admin shows a declared periodic task read-only besides `dt_run` (setting it runs the
   task at that time) and `envs`, and does not delete it.
 - Checks: `bg.E001` (the slug, a duplicate, the name, the period, the kwargs, `enabled`),
   `bg.E002` (the task class does not import, is not a named `BgBase`, or the kwargs do not
   fit its `__init__`); with a database (`bazis_doctor`) `bg.W001` (the database differs
-  from the declarations: run `migrate`).
+  from the declarations: run `migrate`) and `bg.W002` (an enabled periodic task that is
+  not managed runs the task of a schedule with its kwargs: give it the slug or delete it).
 - Tests: the migrated test database has them; `bazis_test_utils` (`apply_declarations()`,
   the fixture `bazis_declared`) applies them again for a test that changes them.
 - `bazis.contrib.bg.declare.apply_declarations(using, schedules=None, dry_run=False)`

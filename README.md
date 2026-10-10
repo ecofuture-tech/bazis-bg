@@ -362,9 +362,18 @@ SCHEDULES = [
 ```
 
 Do not create them with `get_or_create` in a data migration: it runs once, so a new period
-in the code never reaches a database that has the row. The system checks `bg.E001` and
-`bg.E002` validate the declarations, `bg.W001` (with a database, `bazis_doctor`) reports a
-database that differs from them. The admin shows a declared periodic task read-only.
+in the code never reaches a database that has the row. To move such a periodic task (or one
+made in the admin) to `schedules.py`, give its row the slug of the schedule, in the admin
+or in a data migration that depends on `('bg', '0006_taskcron_slug_managed')`
+(`TaskCron.objects.filter(cls_path='myapp.tasks.DataProcessingTask', slug=None).update(slug='data_processing')`),
+so that `migrate` takes it over, or delete it: otherwise both rows run the task.
+
+A managed periodic task no longer declared is disabled and becomes an ordinary one, which
+the admin may enable again (the roles of bazis-permit stay managed instead). The name is
+stored translated into `LANGUAGE_CODE`. The system checks `bg.E001` and `bg.E002` validate
+the declarations; with a database (`bazis_doctor`) `bg.W001` reports a database that
+differs from them and `bg.W002` an enabled periodic task that is not managed and runs a
+declared schedule again. The admin shows a declared periodic task read-only.
 
 #### Through Django Admin
 

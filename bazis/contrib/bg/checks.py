@@ -31,11 +31,13 @@ def check_declarations_applied(app_configs, databases=None, **kwargs):
     """
     The database has the periodic tasks as declared, and no managed one that is no longer
     declared (bg.W001): a warning, as `migrate` runs the database checks before it applies
-    the declarations. Skipped while migrations are not applied.
+    the declarations. No enabled periodic task that is not managed runs the task of a
+    schedule with its kwargs (bg.W002): both would run. Skipped while migrations are not
+    applied.
     """
     from bazis.core.declare import migrations_complete
 
-    from .declare import apply_declarations, declaration_messages, declarations
+    from .declare import apply_declarations, declaration_messages, declarations, duplicates
 
     schedules = declarations()
     if any(it.is_serious() for it in declaration_messages(schedules)):
@@ -51,6 +53,19 @@ def check_declarations_applied(app_configs, databases=None, **kwargs):
                     f'The database {using} differs from the declared schedules: {"; ".join(changes)}.',
                     hint='Run `manage.py migrate`: it applies the declarations.',
                     id='bg.W001',
+                )
+            )
+        if found := duplicates(using, schedules):
+            messages.append(
+                Warning(
+                    f'The database {using} has enabled periodic tasks that are not managed and '
+                    f'run a declared schedule again: {"; ".join(found)}.',
+                    hint=(
+                        'Give the existing periodic task the slug of the schedule (the admin, or '
+                        'a data migration: filter(cls_path=..., slug=None).update(slug=...)), so '
+                        'that migrate takes it over, or delete it.'
+                    ),
+                    id='bg.W002',
                 )
             )
     return messages

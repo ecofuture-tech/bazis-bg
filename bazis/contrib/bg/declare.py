@@ -31,9 +31,13 @@ slug is created or updated as declared and marked `managed`; a change of its per
 `enabled` resets its next run time (the scheduler computes it again). An existing periodic
 task of the slug that is not managed (made in the admin) is taken over with a warning. A
 managed periodic task no longer declared is disabled and becomes an ordinary one (not
-managed); it is not deleted, its tasks reference it. The periodic tasks that are not
-declared are left as they are. The name is stored in the language of the project
-(`LANGUAGE_CODE`).
+managed): unlike the roles and transits, which stay managed with a warning, a periodic
+task would otherwise keep running, and the admin may enable it again; it is not deleted,
+its tasks reference it. The periodic tasks that are not declared are left as they are; an
+enabled one of the same task and kwargs as a schedule (made by a `get_or_create` data
+migration before the schedule) would run twice, `duplicates` lists them (bg.W002). The
+name is a single column: the declared name is stored translated into the language of the
+project (`LANGUAGE_CODE`).
 
 The helpers are those of the core (`bazis.core.declare`), shared with the roles of
 bazis-permit and the workflows of bazis-statusy.
@@ -246,6 +250,30 @@ def apply_declarations(using: str = DEFAULT_DB_ALIAS, schedules=None, dry_run: b
                 obj.is_enable = obj.managed = False
                 obj.save(using=using, update_fields=['is_enable', 'managed'])
     return sync.changes
+
+
+def duplicates(using: str = DEFAULT_DB_ALIAS, schedules=None) -> list[str]:
+    """
+    The enabled periodic tasks that are not managed and run the task of a declared schedule
+    with its kwargs under another slug (or none): with the declared one they run twice.
+    """
+    if schedules is None:
+        schedules = declarations()
+    schedules = [it[1] if isinstance(it, tuple) else it for it in schedules]
+    model = apps.get_model('bg.TaskCron')
+    candidates = model.objects.using(using).filter(
+        managed=False, is_enable=True, cls_path__in=[it.task for it in schedules]
+    ).order_by('pk')
+    found = []
+    for schedule in schedules:
+        found.extend(
+            f'taskcron {obj.pk} ({obj.name}) runs the schedule {schedule.slug}'
+            for obj in candidates
+            if obj.cls_path == schedule.task
+            and obj.slug != schedule.slug
+            and (obj.kwargs or {}) == schedule.kwargs
+        )
+    return found
 
 
 def post_migrate_apply(sender, using=DEFAULT_DB_ALIAS, verbosity=1, **kwargs):

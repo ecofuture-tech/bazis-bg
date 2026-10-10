@@ -253,3 +253,59 @@ def test_the_admin_keeps_declared_periodic_tasks_read_only(admin_user):
     assert model_admin.has_delete_permission(request, ordinary)
     form = model_admin.get_form(request, declared)(instance=declared)
     assert set(form.fields) == {'dt_run', 'envs'}
+
+
+@pytest.mark.django_db
+def test_a_periodic_task_of_a_data_migration_runs_a_schedule_again():
+    """
+    A periodic task made by a `get_or_create` data migration (no slug) and then declared:
+    the schedule creates a second one, bg.W002 reports it until the old row gets the slug
+    (the recipe of the guide) or is deleted.
+    """
+    old = TaskCron.objects.create(
+        name='Hourly', cls_path=LOG_MESSAGE, period='3600', kwargs={'message': 'hourly'}
+    )
+    # the other periodic tasks of the admin are not duplicates: other kwargs, disabled
+    TaskCron.objects.create(name='Other', cls_path=LOG_MESSAGE, period='60', kwargs={'message': 'x'})
+    TaskCron.objects.create(
+        name='Off', cls_path=LOG_MESSAGE, period='60', kwargs={'message': 'hourly'}, is_enable=False
+    )
+
+    [warning] = check_declarations_applied(None, databases=['default'])
+    assert warning.id == 'bg.W002'
+    assert f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly' in warning.msg
+    assert 'update(slug=...)' in warning.hint
+    assert declare.duplicates() == [f'taskcron {old.pk} (Hourly) runs the schedule entity_log_hourly']
+
+    # the recipe: the declared row is replaced by the old one, which migrate takes over
+    TaskCron.objects.filter(slug='entity_log_hourly').delete()
+    TaskCron.objects.filter(
+        cls_path=LOG_MESSAGE, slug=None, kwargs={'message': 'hourly'}, is_enable=True
+    ).update(slug='entity_log_hourly')
+    assert apply_declarations() == ['taskcron entity_log_hourly: name, managed changed']
+    assert TaskCron.objects.get(slug='entity_log_hourly').pk == old.pk
+    assert declare.duplicates() == []
+    assert check_declarations_applied(None, databases=['default']) == []
+
+
+@pytest.mark.django_db
+def test_a_periodic_task_without_kwargs_runs_a_schedule_without_kwargs_again():
+    unnamed = Schedule('nightly_clean', 'bazis.contrib.bg.bg.tasks_clean.BgTasksClean', '0 3 * * *')
+    cron = TaskCron.objects.create(
+        name='Clean', cls_path='bazis.contrib.bg.bg.tasks_clean.BgTasksClean', period='3600'
+    )
+    assert declare.duplicates(schedules=[unnamed]) == [
+        f'taskcron {cron.pk} (Clean) runs the schedule nightly_clean'
+    ]
+
+
+@pytest.mark.django_db
+def test_the_changelist_locks_the_declared_periodic_tasks(admin_user):
+    request = RequestFactory().get('/')
+    request.user = admin_user
+    model_admin = TaskCronAdmin(TaskCron, AdminSite())
+    TaskCron.objects.create(name='Admin', cls_path=LOG_MESSAGE, period='60')
+
+    formset = model_admin.get_changelist_formset(request)(queryset=TaskCron.objects.order_by('pk'))
+    enabled = {form.instance.slug: form.fields['is_enable'].disabled for form in formset.forms}
+    assert enabled == {'entity_log_hourly': True, None: False}
