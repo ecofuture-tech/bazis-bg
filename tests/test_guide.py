@@ -13,9 +13,10 @@
 # limitations under the License.
 
 """
-The recipe of the guide (bazis/contrib/bg/AGENTS.md) for an export for the user of a
-request: the user and the language are arguments of the task, the rows are restricted by
-the `restrict_queryset` of the default route, the texts are in the language of the user.
+The recipes of the guide (bazis/contrib/bg/AGENTS.md): an export for the user of a
+request (the user and the language are arguments of the task, the rows are restricted by
+the `restrict_queryset` of the default route, the texts are in the language of the user);
+lazy texts as the name of a task and the names of its phases.
 """
 
 from django.contrib.auth import get_user_model
@@ -27,6 +28,7 @@ import pytest
 from entity.bg.calc_data import LogMessage
 from openpyxl import load_workbook
 
+from bazis.contrib.bg.basic.base import BgBase
 from bazis.contrib.bg.basic.base_download import BgBaseDownload
 from bazis.contrib.bg.models import Task
 from bazis.contrib.bg.routes import BgRoute
@@ -87,3 +89,46 @@ def test_export_for_the_user_of_a_request(settings, tmp_path, monkeypatch):
     assert rows[0] == ('Name', 'Время добавления')
     # only the tasks of the user
     assert [row[0] for row in rows[1:]] == ['Own task']
+
+
+class LazyNamed(BgBase):
+    # msgids of the catalog of the core
+    name = _('Creation time')
+
+    def __init__(self, language=None):
+        self.language = language
+
+    def handle(self):
+        self.next_phase(_('Update time'))
+        self.progress()
+        if self.language:
+            with translation.override(self.language):
+                self.next_phase(_('Update time'))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_lazy_texts_as_the_names_of_a_task_and_its_phases(monkeypatch):
+    """
+    The name of a task class and the names of its phases may be lazy texts: they are stored
+    as text in the language active when they are written, the name by `delay()` (the
+    language of the request in a route), a phase in the handler process (`LANGUAGE_CODE`
+    there, unless the task activates a language). The class keeps the lazy name.
+    """
+    from django.conf import settings as django_settings
+
+    monkeypatch.setattr(django_settings, 'LANGUAGES', [('en', 'English'), ('ru', 'Русский')])
+
+    with translation.override('ru'):
+        task = LazyNamed.delay(language='ru')
+    assert Task.objects.get(pk=task.pk).name == 'Время добавления'
+    with translation.override('en'):
+        assert str(LazyNamed.get_name()) == 'Creation time'
+        task = LazyNamed.delay()
+    assert Task.objects.get(pk=task.pk).name == 'Creation time'
+
+    first = Task.objects.exclude(pk=task.pk).get(cls_path=LazyNamed.get_path())
+    with translation.override(django_settings.LANGUAGE_CODE):
+        call_command('bg_task', task_id=first.id)
+    first.refresh_from_db()
+    assert first.is_success, first.error
+    assert [it['phase'] for it in first.phases_history] == ['Update time', 'Время обновления']

@@ -333,12 +333,17 @@ class BgBase(metaclass=BgBaseMeta):
         """
         Sets a new task phase
 
-        :param phase_name: String name of the phase
+        :param phase_name: String name of the phase (a lazy text is stored in the language
+            active now, in the phase and in its record of the history)
         :param expected: expected number of operations. Can be a dictionary
         :return:
         """
         # save the last status state
         self._phase_save()
+
+        # the text of the phase as it starts: the history records it when the phase ends,
+        # maybe in another language
+        phase_name = str(phase_name)
 
         self.task_update(phase=phase_name, expected=expected)
         self.log.info('%s. Expected count: %s', phase_name, expected or 'not defined')

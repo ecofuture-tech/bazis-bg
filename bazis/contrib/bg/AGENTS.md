@@ -50,6 +50,14 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
 
 - `delay()` arguments are stored as JSON. Reserved keyword arguments: `name`, `fp` (a file
   saved to `task.file`), `author`, `envs` (stored, not applied).
+- The name of a task class, the `name=` of `delay()` and the names of the phases
+  (`next_phase`) may be lazy texts (`gettext_lazy`, English msgids). The class keeps the
+  lazy name (the admin lists it in the language of its request); a task stores text in the
+  language active when it is written: `Task.name` at `delay()` (the language of the
+  request in a route; the scheduler queues a periodic task in `LANGUAGE_CODE`), a phase
+  (`phase` and its record in `phases_history`) at `next_phase` in the handler process, in
+  `LANGUAGE_CODE` unless the task activates a language (`translation.override(self.language)`
+  in `handle`, as the export below). A client shows the stored text as it is.
 - States: `waiting` → `starting` → `running` → `done`; `task.is_success`, `is_error`
   (`error` holds the traceback), `is_interrupt`; `phase`, `log`, `result`, `file`.
 - Hooks: `pre_handle`, `post_handle`, `excepting` (error), `interrupting`, `finishing`
