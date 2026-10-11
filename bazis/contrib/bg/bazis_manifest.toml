@@ -41,7 +41,7 @@ use_when = "admin actions that start export, import or other tasks"
 [[extension_points]]
 name = "Schedule"
 import = "bazis.contrib.bg.declare.Schedule"
-use_when = "a periodic task of a product (period in seconds or a cron expression in UTC): SCHEDULES in <app>/schedules.py, applied by migrate"
+use_when = "a periodic task (seconds or a cron expression in UTC) in the SCHEDULES of <app>/schedules.py, applied by migrate"
 
 [[extension_points]]
 name = "TaskCron"
@@ -52,16 +52,16 @@ use_when = "the periodic tasks in the database: declared ones (managed) and thos
 text = "tasks run only while `manage.py bg_scheduler` runs (from the directory of manage.py)"
 
 [[pitfalls]]
-text = "BgRoute.restrict_queryset (own tasks, all for staff) is also what the other routes link and include: a custom task route changes the rule there (default_route = True), not only in get_queryset"
+text = "BgRoute.restrict_queryset is also what the other routes link and include: a custom task route changes the rule there"
 
 [[pitfalls]]
-text = "a task runs in the handler process without the request, its user or its language: an export for a user gets his id and the language as JSON arguments of delay(), author=user (so that he reads the task), restricts the rows with the restrict_queryset of the default route of the model for him and wraps handle() in translation.override"
+text = "a task runs without the request, its user or its language: pass the user id and the language as arguments, author=user"
 
 [[pitfalls]]
-text = "the file of a task (an export with personal data) is downloaded from GET /api/v1/bg/task/{id}/download/ (the author and staff): the file attribute is a media URL served to anyone who has it"
+text = "the file of a task is downloaded from GET /api/v1/bg/task/{id}/download/: its file attribute is a public media URL"
 
 [[pitfalls]]
-text = "BgRoute and its subclasses restrict the tasks with their own restrict_queryset: permit.W002 does not apply to them from bazis-permit 2.10; do not declare permit_public = True"
+text = "do not declare permit_public = True on the task routes: they restrict the tasks themselves"
 
 [[pitfalls]]
 text = "with is_transaction, next_phase, progress syncs and set_result commit the work done so far"
@@ -73,11 +73,11 @@ text = "the scheduler deletes waiting tasks whose class path no longer imports"
 text = "a task class without `name` cannot be queued and is not listed in the admin"
 
 [[pitfalls]]
-text = "declare a periodic task in <app>/schedules.py, not with get_or_create in a data migration: the migration runs once, so a new period in the code never reaches the database"
+text = "declare a periodic task in <app>/schedules.py, not with get_or_create in a data migration"
 check = "bg.W001"
 
 [[pitfalls]]
-text = "a periodic task made earlier by a get_or_create data migration or in the admin has no slug: declared in schedules.py it runs twice; delete the old row (admin, or a data migration TaskCron.objects.filter(cls_path=..., slug=None).delete()) and let the declaration own the schedule; its tasks are kept, unlinked"
+text = "a periodic task of an old data migration or of the admin has no slug: declared in schedules.py it runs twice; delete the old row"
 check = "bg.W002"
 
 [[pitfalls]]

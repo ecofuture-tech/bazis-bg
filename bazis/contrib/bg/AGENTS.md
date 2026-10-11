@@ -5,6 +5,20 @@ as a `Task` row, the `bg_scheduler` process starts handler processes that run th
 schedules periodic tasks (`TaskCron`) and enforces the limits of each class. Also bases for
 xlsx exports and imports. Needs bazis-author (tasks have an `author`).
 
+### The sections
+
+Read a section with `package_guide("bazis-bg", "<section>")` when the step at hand needs
+it; `guide_search` finds the part of a section that answers a question. A product with
+background work needs Setup, Tasks and Rules.
+
+| Section | Read it when |
+|---|---|
+| Setup | you install it: the app, where the task classes live, `bg_scheduler` and the handlers, `bg_task`, the storage of the files of the tasks |
+| Tasks | you write a task: `BgBase`, `delay()`, the names and phases (lazy texts), the states, the hooks, the transactions |
+| Exports and imports | a task writes or reads xlsx: `BgBaseDownloadModel`, `BgBaseDownload`, `BgBaseLoad`, an export for the user of a request, the admin actions |
+| Periodic tasks and cleanup | a task runs on a schedule: `Schedule` in `schedules.py`, what `migrate` applies, a periodic task of an old data migration, the checks `bg.*`, the cleanup |
+| Rules | before you write the code, once: who sees the tasks, the download of their files, the class paths, the handlers |
+
 ## Setup
 
 - `BS_INSTALLED_APPS` includes `bazis.contrib.bg`; `python manage.py migrate`.
@@ -66,6 +80,8 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
 - `is_transaction = True` (default) runs the task with autocommit off, but every
   `next_phase`, `flush`, `set_result` (and synced `progress`) commits the work done so far;
   an error rolls back only since the last commit.
+## Exports and imports
+
 - Exports: `BgBaseDownloadModel` (`model`, `fields_read`; all objects, override
   `get_queryset`) or `BgBaseDownload` (`fields_read`, `get_queryset`, `get_count`,
   `get_titles`, `file_name`) write xlsx to `task.file` (a zip above `limit_rows_split`
