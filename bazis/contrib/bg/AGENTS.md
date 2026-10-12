@@ -205,6 +205,12 @@ SCHEDULES = [
   seconds, dynamic settings (edited in the admin) read when it runs. It runs every
   `BAZIS_TASK_CRON_CLEANUP` (3600) seconds unless `BAZIS_TASK_CLEANUP` is false: these two
   are environment settings applied by `migrate`. A product does not declare it again.
+  It deletes the tasks through the ORM, by portions of 1000 in a transaction each, so the
+  `on_delete` of a foreign key to `bg.Task` applies (`SET_NULL` unlinks, `CASCADE`
+  deletes), then the files of the deleted tasks (a file the storage fails to delete is
+  logged and left). A task kept by `PROTECT` or `RESTRICT` is logged and left with its
+  file; the portion that holds it is deleted task by task at every run, so prefer
+  `SET_NULL` for a reference that may outlive the task.
   `manage.py cleanup_init` is deprecated and does nothing (removed in 2.7).
 
 ## Rules

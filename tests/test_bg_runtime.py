@@ -23,6 +23,7 @@ from django.utils.timezone import now
 
 import pytest
 from entity.bg.calc_data import ExportParents, LogMessage
+from entity.models import Report, TaskArchive
 
 from bazis.contrib.bg.bg.tasks_clean import BgTasksClean
 from bazis.contrib.bg.management.commands.bg_scheduler import Command as Scheduler
@@ -130,6 +131,79 @@ def test_tasks_clean_deletes_files(settings, tmp_path):
     assert clean.is_success, clean.error
     assert not Task.objects.filter(pk=old.pk).exists()
     assert not os.path.exists(path)
+
+
+def _old_export(settings, tmp_path):
+    """
+    A finished export with a file, older than the lifetime of the manual tasks (1 second).
+    """
+    settings.MEDIA_ROOT = str(tmp_path)
+    factories.ParentEntityFactory.create_batch(2, child_entities=False)
+    export = _run(ExportParents.delay())
+    assert os.path.exists(export.file.path)
+    settings.BAZIS_TASK_LIFETIME = 1
+    time.sleep(1.1)
+    return export
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tasks_clean_applies_the_foreign_keys_to_the_tasks(settings, tmp_path):
+    """
+    A report references an old task (SET_NULL): the cleanup unlinks it and deletes the task
+    and its file. A raw delete of the rows failed on the foreign key, after the files were
+    deleted, at every run.
+    """
+    export = _old_export(settings, tmp_path)
+    report = Report.objects.create(title='Report', task=export)
+
+    clean = _run(BgTasksClean.delay())
+
+    assert clean.is_success, clean.error
+    assert not Task.objects.filter(pk=export.pk).exists()
+    assert not os.path.exists(export.file.path)
+    report.refresh_from_db()
+    assert report.task is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tasks_clean_leaves_the_protected_tasks(settings, tmp_path):
+    """
+    A task kept by a PROTECT foreign key stays with its file and is logged; the other tasks
+    of its portion are deleted.
+    """
+    export = _old_export(settings, tmp_path)
+    other = _run(LogMessage.delay('old'))
+    time.sleep(1.1)
+    TaskArchive.objects.create(task=export)
+
+    clean = _run(BgTasksClean.delay())
+
+    assert clean.is_success, clean.error
+    assert list(Task.objects.exclude(pk=clean.pk).values_list('pk', flat=True)) == [export.pk]
+    assert os.path.exists(export.file.path)
+    assert not Task.objects.filter(pk=other.pk).exists()
+    assert f'The task {export.pk} is kept by a protected reference' in clean.log
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tasks_clean_deletes_the_rows_when_the_storage_fails(settings, tmp_path, monkeypatch):
+    """
+    The rows are deleted first; a file the storage fails to delete is logged and left.
+    """
+    export = _old_export(settings, tmp_path)
+    storage = Task._meta.get_field('file').storage
+
+    def failing_delete(name):
+        raise OSError('the storage is down')
+
+    monkeypatch.setattr(type(storage), 'delete', lambda self, name: failing_delete(name))
+
+    clean = _run(BgTasksClean.delay())
+
+    assert clean.is_success, clean.error
+    assert not Task.objects.filter(pk=export.pk).exists()
+    assert os.path.exists(export.file.path)
+    assert f'The file {export.file.name} of a task was not deleted' in clean.log
 
 
 @pytest.mark.django_db(transaction=True)

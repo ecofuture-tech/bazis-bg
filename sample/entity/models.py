@@ -79,3 +79,11 @@ class Report(DtMixin, UuidMixin, JsonApiMixin):
     class Meta:
         verbose_name = _('Report')
         verbose_name_plural = _('Reports')
+
+
+class TaskArchive(models.Model):
+    """
+    Keeps the background task it references (PROTECT): the cleanup leaves such a task.
+    """
+
+    task = models.ForeignKey('bg.Task', on_delete=models.PROTECT, related_name='+')

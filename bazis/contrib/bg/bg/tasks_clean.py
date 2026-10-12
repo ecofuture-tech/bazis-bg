@@ -15,6 +15,8 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
+from django.db.models import ProtectedError, RestrictedError
 from django.utils.timezone import now
 
 from ..basic.base import BgBase
@@ -24,21 +26,50 @@ from ..models import Task
 class BgTasksClean(BgBase):
     name = 'Background tasks cleanup'
     parallel = 1
+    # each portion of tasks is deleted in a transaction of its own, committed before the
+    # files of its tasks are deleted from the storage
+    is_transaction = False
 
     def delete_tasks(self, qs, chunk_size=1000):
-        # the rows are fixed first: a task that ages between the two queries would lose
-        # its row but keep its file. The files of the tasks are deleted from the storage,
-        # then the rows (raw delete: fast, without signals, which would leave the files)
+        """
+        Deletes the tasks of `qs` by portions of `chunk_size` through the ORM, so that the
+        `on_delete` of the foreign keys to the tasks applies (SET_NULL, CASCADE), each portion
+        in a transaction; then the files of the deleted tasks from the storage (a file that
+        fails is logged and left). A task that a PROTECT or RESTRICT foreign key keeps is
+        logged and left with its file, the other tasks of its portion are deleted one by one.
+        """
+        # the rows are fixed first: a task that ages meanwhile waits for the next run
         pks = list(qs.values_list('pk', flat=True))
-        storage = Task._meta.get_field('file').storage
         for i in range(0, len(pks), chunk_size):
-            chunk = Task.objects.filter(pk__in=pks[i : i + chunk_size])
-            for name in chunk.exclude(file='').exclude(file=None).values_list('file', flat=True):
+            chunk = pks[i : i + chunk_size]
+            try:
+                files = self._delete_rows(chunk)
+            except (ProtectedError, RestrictedError):
+                files = []
+                for pk in chunk:
+                    try:
+                        files += self._delete_rows([pk])
+                    except (ProtectedError, RestrictedError):
+                        self.log.warning('The task %s is kept by a protected reference', pk)
+            storage = Task._meta.get_field('file').storage
+            for name in files:
                 try:
                     storage.delete(name)
                 except Exception:  # NOQA [B902]
                     self.log.warning('The file %s of a task was not deleted', name)
-            chunk._raw_delete(chunk.db)
+
+    @staticmethod
+    def _delete_rows(pks) -> list[str]:
+        """
+        Deletes the tasks in a transaction and returns the names of their files.
+        """
+        with transaction.atomic():
+            # only the keys are loaded when the deletion needs the objects (the signals or
+            # the foreign keys to them): not the logs
+            tasks = Task.objects.filter(pk__in=pks).only('pk')
+            files = list(tasks.exclude(file='').exclude(file=None).values_list('file', flat=True))
+            tasks.delete()
+        return files
 
     def handle(self):
         # get all manual tasks that have not been updated for longer than the specified period
