@@ -1,18 +1,18 @@
-
-$(function() {
-
-    $('#changelist-form [name="action"]').change(function (){
-        var file_load_block = $('#changelist-form [name="file_load"]').parent();
-        file_load_block.css('display', 'none');
-        if(window.actions_task_load) {
-            if ($.inArray($(this).val(), actions_task_load) !== -1) {
-                file_load_block.removeAttr('style');
-            }
-        }
-    });
-
-    $('#changelist-form [name="action"]').change();
-
+'use strict';
+// The file field of the action form of LoadDownloadAdminMixin: shown only for the actions
+// that load a file (bg-actions-task-load, rendered by admin/bg/change_list.html).
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('changelist-form');
+    const data = document.getElementById('bg-actions-task-load');
+    const action = form && form.querySelector('[name="action"]');
+    const fileLoad = form && form.querySelector('[name="file_load"]');
+    if (!action || !fileLoad) {
+        return;
+    }
+    const loads = (data && JSON.parse(data.textContent)) || [];
+    const toggle = function () {
+        fileLoad.parentElement.style.display = loads.includes(action.value) ? '' : 'none';
+    };
+    action.addEventListener('change', toggle);
+    toggle();
 });
-
-

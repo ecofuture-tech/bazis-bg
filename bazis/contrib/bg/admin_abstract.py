@@ -22,6 +22,7 @@ from django.http import HttpResponseRedirect
 
 # from .models import Task, TaskCron
 from django.urls import reverse
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from bazis.contrib.author.admin_abstract import AuthorAdminMixin
@@ -42,11 +43,10 @@ def create_task_action(task, func_task=None):
         # Dynamic URL generation
         admin_url = reverse('admin:bg_task_change', args=[task_obj.id])
 
-        # print('task_obj:', task_obj)
         messages.add_message(
             request,
             messages.SUCCESS,
-            f'Started: <a href="{admin_url}" target="_blank">{task.get_name()}</a>',
+            format_html('Started: <a href="{}" target="_blank">{}</a>', admin_url, task.get_name()),
         )
 
     func.short_description = task.get_name()
@@ -85,6 +85,8 @@ class LoadDownloadAdminMetaclass(forms.MediaDefiningClass):
 
 class LoadDownloadAdminMixin(metaclass=LoadDownloadAdminMetaclass):
     action_form = LoadActionForm
+    #: gives file_load.js the actions that load a file
+    change_list_template = 'admin/bg/change_list.html'
     tasks_load = []
     tasks_download = []
     tasks_handler = []
@@ -120,7 +122,7 @@ class LoadDownloadAdminMixin(metaclass=LoadDownloadAdminMetaclass):
         return formset
 
     class Media:
-        js = ('admin/js/jquery-3.5.1.min.js', 'admin/js/file_load.js')
+        js = ('admin/js/file_load.js',)
 
 
 class TaskDoneFilter(admin.SimpleListFilter):
