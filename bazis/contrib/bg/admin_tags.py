@@ -12,16 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from django.apps import apps
 from django.utils.safestring import mark_safe
-
-
-def task_is_run(cls):
-    return apps.get_model('bg.Task').objects.filter(cls=cls).exclude(state='done').exists()
-
-
-def task_is_success(task):
-    return (task.state == 'done') and (not task.error) and (not task.interrupt)
 
 
 def progress(task):

@@ -168,7 +168,6 @@ BS_BAZIS_TASK_SCHEDULER_IDLE=0.2
 
 # Handlers
 BS_BAZIS_TASK_HANDLERS_LOCAL=5
-BS_BAZIS_TASK_HANDLERS_GLOBAL=50
 BS_BAZIS_TASK_HANDLER_PORT=49100
 BS_BAZIS_TASK_HANDLER_IDLE=0.5
 
@@ -622,7 +621,6 @@ BS_BAZIS_TASK_SCHEDULER_IDLE=0.2        # Delay between iterations, sec
 
 # Handlers
 BS_BAZIS_TASK_HANDLERS_LOCAL=5          # Number of local handlers
-BS_BAZIS_TASK_HANDLERS_GLOBAL=50        # Global number of handlers
 BS_BAZIS_TASK_HANDLER_PORT=49100        # Base port for handlers
 BS_BAZIS_TASK_HANDLER_IDLE=0.5          # Delay between task checks, sec
 
@@ -638,9 +636,6 @@ BS_BAZIS_STORAGE_BG=None                # Storage class (default FileSystemStora
 
 # Number of local handlers
 BAZIS_TASK_HANDLERS_LOCAL = 3
-
-# Global number of handlers
-BAZIS_TASK_HANDLERS_GLOBAL = 50
 
 # Base port for handlers
 BAZIS_TASK_HANDLER_PORT = 8100

@@ -24,7 +24,6 @@ class Settings(BazisSettings):
         'bg', title='Directory in the application where background tasks are located'
     )
     BAZIS_TASK_HANDLERS_LOCAL: int = Field(5, title='Minimum local number of handlers')
-    BAZIS_TASK_HANDLERS_GLOBAL: int = Field(50, title='Global number of handlers')
     BAZIS_TASK_HANDLER_PORT: int = Field(49100, title='Default handler port')
     BAZIS_TASK_HANDLER_IDLE: float = Field(
         0.5, title='Handler wait time before a new work cycle'
