@@ -28,8 +28,8 @@ from django.utils.timezone import now
 
 from aiohttp import web
 
+from bazis.contrib.bg.network import healthcheck_server
 from bazis.core.utils.functools import throttle
-from bazis.core.utils.network import healthcheck_server
 
 
 sys.stdout.reconfigure(line_buffering=True)

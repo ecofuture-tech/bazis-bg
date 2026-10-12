@@ -35,8 +35,8 @@ import psutil
 from asgiref.sync import sync_to_async
 from crontab import CronTab
 
+from bazis.contrib.bg.network import check_port, healthcheck_server
 from bazis.core.utils.functools import throttle
-from bazis.core.utils.network import check_port, healthcheck_server
 
 
 sys.stdout.reconfigure(line_buffering=True)

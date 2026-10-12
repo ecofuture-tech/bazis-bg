@@ -38,6 +38,8 @@ dependencies = [
     "openpyxl>=3.1.2",
     "psutil>=5.9.7",
     "crontab>=1.0.1",
+    # the health check server (bazis.contrib.bg.network), moved from bazis 2.16
+    "aiohttp~=3.14",
 ]
 
 [project.optional-dependencies]
