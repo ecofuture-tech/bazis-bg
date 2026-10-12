@@ -48,15 +48,23 @@ CLEAN = 'bazis.contrib.bg.bg.tasks_clean.BgTasksClean'
 SAMPLE = declare.declarations()
 
 
+def declared(*schedules):
+    """
+    The schedules as declarations of a module.
+    """
+    return [('test', it) for it in schedules]
+
+
 def apply(*schedules, dry_run=False):
     """
     Applies the schedules of the sample and these ones.
     """
-    return apply_declarations(schedules=[*SAMPLE, *schedules], dry_run=dry_run)
+    return apply_declarations(schedules=[*SAMPLE, *declared(*schedules)], dry_run=dry_run)
+
 
 
 def errors(*schedules):
-    return [(it.id, it.msg) for it in declaration_messages([('test', it) for it in schedules])]
+    return [(it.id, it.msg) for it in declaration_messages(declared(*schedules))]
 
 
 @pytest.mark.django_db
@@ -324,7 +332,7 @@ def test_a_periodic_task_without_kwargs_runs_a_schedule_without_kwargs_again():
     cron = TaskCron.objects.create(
         name='Clean', cls_path='bazis.contrib.bg.bg.tasks_clean.BgTasksClean', period='3600'
     )
-    assert declare.duplicates(schedules=[unnamed]) == [
+    assert declare.duplicates(schedules=declared(unnamed)) == [
         f'taskcron {cron.pk} (Clean) runs the schedule nightly_clean'
     ]
 

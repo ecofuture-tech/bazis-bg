@@ -196,7 +196,8 @@ SCHEDULES = [
 - Tests: the migrated test database has them; `bazis_test_utils` (`apply_declarations()`,
   the fixture `bazis_declared`) applies them again for a test that changes them.
 - `bazis.contrib.bg.declare.apply_declarations(using, schedules=None, dry_run=False)`
-  returns the changes; `dry_run` only lists them.
+  returns the changes; `dry_run` only lists them; `schedules` are `(module, Schedule)`
+  pairs, as `declarations()` gives them.
 - The cleanup is the periodic task `bg_tasks_clean` that bazis-bg declares itself
   (`bazis/contrib/bg/schedules.py`): it deletes the tasks (and their files) not updated for
   `BAZIS_TASK_LIFETIME` (manual, 90 days) or `BAZIS_TASK_CRON_LIFETIME` (periodic, 6 hours)

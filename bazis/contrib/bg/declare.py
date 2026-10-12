@@ -218,15 +218,18 @@ def _values(schedule: Schedule) -> dict:
     }
 
 
-def apply_declarations(using: str = DEFAULT_DB_ALIAS, schedules=None, dry_run: bool = False) -> list[str]:
+def apply_declarations(
+    using: str = DEFAULT_DB_ALIAS,
+    schedules: list[tuple[str, Schedule]] | None = None,
+    dry_run: bool = False,
+) -> list[str]:
     """
-    Applies the declared schedules (by default those of the `schedules.py` modules) to the
-    database in one transaction and returns the changes; with `dry_run` only returns them.
-    Applied again, it writes nothing.
+    Applies the declared schedules, `(module, Schedule)` as `declarations()` gives them (by
+    default those of the `schedules.py` modules), to the database in one transaction and
+    returns the changes; with `dry_run` only returns them. Applied again, it writes nothing.
     """
     if schedules is None:
         schedules = declarations()
-    schedules = [it if isinstance(it, tuple) else ('', it) for it in schedules]
     if errors := [it for it in declaration_messages(schedules) if it.is_serious()]:
         raise ImproperlyConfigured(
             'Invalid declarations of schedules:\n' + '\n'.join(f'{it.id}: {it.msg}' for it in errors)
@@ -252,14 +255,17 @@ def apply_declarations(using: str = DEFAULT_DB_ALIAS, schedules=None, dry_run: b
     return sync.changes
 
 
-def duplicates(using: str = DEFAULT_DB_ALIAS, schedules=None) -> list[str]:
+def duplicates(
+    using: str = DEFAULT_DB_ALIAS, schedules: list[tuple[str, Schedule]] | None = None
+) -> list[str]:
     """
     The enabled periodic tasks that are not managed and run the task of a declared schedule
-    with its kwargs under another slug (or none): with the declared one they run twice.
+    (`(module, Schedule)`, by default those of `declarations()`) with its kwargs under
+    another slug (or none): with the declared one they run twice.
     """
     if schedules is None:
         schedules = declarations()
-    schedules = [it[1] if isinstance(it, tuple) else it for it in schedules]
+    schedules = [it for _module, it in schedules]
     model = apps.get_model('bg.TaskCron')
     candidates = model.objects.using(using).filter(
         managed=False, is_enable=True, cls_path__in=[it.task for it in schedules]
