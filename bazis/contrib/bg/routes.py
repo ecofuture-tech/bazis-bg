@@ -54,12 +54,10 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
         """
         The tasks of the user, all tasks for staff, for every action. Without a user (a
         route without a user, e.g. called by the core for the relationships of another
-        route) the authenticated user of the request (`UserMixin.CTX_USER_REQUEST`); none
+        route) the authenticated user of the request (`UserMixin.authenticated_user`); none
         for an anonymous user.
         """
-        if user is None:
-            user = UserMixin.CTX_USER_REQUEST.get()
-        if user is None or user.is_anonymous:
+        if (user := UserMixin.authenticated_user(user)) is None:
             return qs.none()
         qs = super().restrict_queryset(qs, access_action, user=user, **kwargs)
         return qs if user.is_staff else qs.filter(author=user)

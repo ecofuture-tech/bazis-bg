@@ -36,6 +36,8 @@ dependencies = [
     "bazis>=2.7.0",  # raise to >=2.16.0 at the release: bazis.core.declare (the schedules)
     "bazis-author>=2.3.0",
     "openpyxl>=3.1.2",
+    # UserMixin.authenticated_user: the user restrict_queryset works for
+    "bazis-users>=2.9.0",
     "psutil>=5.9.7",
     "crontab>=1.0.1",
     # the health check server (bazis.contrib.bg.network), moved from bazis 2.16
