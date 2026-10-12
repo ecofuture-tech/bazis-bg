@@ -14,7 +14,6 @@
 
 import asyncio
 import logging
-import os
 import socket
 import sys
 import threading
@@ -52,10 +51,8 @@ def cron_next_run(period: str) -> datetime:
     return datetime.fromtimestamp(CronTab(period).next(default_utc=True, delta=False), tz=UTC)
 
 
-def proc_start(cmd, envs=None):
-    env = os.environ.copy()
-    env.update(envs or {})
-    return psutil.Popen([str(x) for x in cmd], env=env)
+def proc_start(cmd):
+    return psutil.Popen([str(x) for x in cmd])
 
 
 class Command(BaseCommand):

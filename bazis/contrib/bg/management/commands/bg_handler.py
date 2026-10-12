@@ -103,7 +103,6 @@ class Command(BaseCommand):
                     sleep(settings.BAZIS_TASK_HANDLER_IDLE)
                     continue
 
-            # TODO: set ENVS
             LOG.info(f'Starting task {task.id} ({task.name})...')
 
             try:

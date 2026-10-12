@@ -325,13 +325,10 @@ task = DataProcessingTask.delay(
     author=request.user,
     param1='value1'
 )
-
-# With environment variables
-task = DataProcessingTask.delay(
-    envs={'MY_VAR': 'value'},
-    param1='value1'
-)
 ```
+
+`envs=` of `delay()` is stored with the task (`Task.envs`) and not applied to the process
+that runs it: a task reads its settings itself.
 
 #### Synchronous Launch
 

@@ -73,6 +73,9 @@ class TaskBaseModel(UuidMixin, DtMixin, AuthorMixin):
     cls_path = models.CharField('Task class', max_length=255, db_index=True)
     args = models.JSONField(null=True, blank=True)
     kwargs = models.JSONField(null=True, blank=True)
+    #: stored with the task, not applied to the process that runs it. Kept while products
+    #: write it (their data migrations and tests set `envs`); removed with the migration that
+    #: removes `Task.pid`, which is never filled either
     envs = models.JSONField(null=True, blank=True)
     error = models.TextField('Error', null=True, blank=True)
 
