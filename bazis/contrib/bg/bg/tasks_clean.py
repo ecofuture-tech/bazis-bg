@@ -33,35 +33,29 @@ class BgTasksClean(BgBase):
     def delete_tasks(self, qs, chunk_size=1000):
         """
         Deletes the tasks of `qs` by portions of `chunk_size` through the ORM, so that the
-        `on_delete` of the foreign keys to the tasks applies (SET_NULL, CASCADE), each portion
-        in a transaction; then the files of the deleted tasks from the storage (a file that
-        fails is logged and left). A task that a PROTECT or RESTRICT foreign key keeps is
-        logged and left with its file, the other tasks of its portion are deleted one by one.
+        `on_delete` of the foreign keys to the tasks applies (SET_NULL, CASCADE), each
+        portion in a transaction followed by the deletion of its files (`_delete_portion`).
+        A task that a PROTECT or RESTRICT foreign key keeps is logged and left with its file,
+        the other tasks of its portion are deleted one by one.
         """
         # the rows are fixed first: a task that ages meanwhile waits for the next run
         pks = list(qs.values_list('pk', flat=True))
         for i in range(0, len(pks), chunk_size):
             chunk = pks[i : i + chunk_size]
             try:
-                files = self._delete_rows(chunk)
+                self._delete_portion(chunk)
             except (ProtectedError, RestrictedError):
-                files = []
                 for pk in chunk:
                     try:
-                        files += self._delete_rows([pk])
+                        self._delete_portion([pk])
                     except (ProtectedError, RestrictedError):
                         self.log.warning('The task %s is kept by a protected reference', pk)
-            storage = Task._meta.get_field('file').storage
-            for name in files:
-                try:
-                    storage.delete(name)
-                except Exception:  # NOQA [B902]
-                    self.log.warning('The file %s of a task was not deleted', name)
 
-    @staticmethod
-    def _delete_rows(pks) -> list[str]:
+    def _delete_portion(self, pks):
         """
-        Deletes the tasks in a transaction and returns the names of their files.
+        Deletes the tasks in a transaction, then, once it is committed, their files from the
+        storage: whatever fails later, no deleted task leaves its file (an export holds
+        personal data). A file the storage fails to delete is logged and left.
         """
         with transaction.atomic():
             # only the keys are loaded when the deletion needs the objects (the signals or
@@ -69,7 +63,12 @@ class BgTasksClean(BgBase):
             tasks = Task.objects.filter(pk__in=pks).only('pk')
             files = list(tasks.exclude(file='').exclude(file=None).values_list('file', flat=True))
             tasks.delete()
-        return files
+        storage = Task._meta.get_field('file').storage
+        for name in files:
+            try:
+                storage.delete(name)
+            except Exception:  # NOQA [B902]
+                self.log.warning('The file %s of a task was not deleted', name)
 
     def handle(self):
         # get all manual tasks that have not been updated for longer than the specified period

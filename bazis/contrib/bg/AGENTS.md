@@ -207,8 +207,8 @@ SCHEDULES = [
   are environment settings applied by `migrate`. A product does not declare it again.
   It deletes the tasks through the ORM, by portions of 1000 in a transaction each, so the
   `on_delete` of a foreign key to `bg.Task` applies (`SET_NULL` unlinks, `CASCADE`
-  deletes), then the files of the deleted tasks (a file the storage fails to delete is
-  logged and left). A task kept by `PROTECT` or `RESTRICT` is logged and left with its
+  deletes), and the files of a portion once its rows are committed (a file the storage
+  fails to delete is logged and left). A task kept by `PROTECT` or `RESTRICT` is logged and left with its
   file; the portion that holds it is deleted task by task at every run, so prefer
   `SET_NULL` for a reference that may outlive the task.
   `manage.py cleanup_init` is deprecated and does nothing (removed in 2.7).

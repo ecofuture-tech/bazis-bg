@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from zipfile import ZipFile
 
 from django.core.management import call_command
+from django.db import connection
 from django.utils.timezone import now
 
 import pytest
@@ -204,6 +205,61 @@ def test_tasks_clean_deletes_the_rows_when_the_storage_fails(settings, tmp_path,
     assert not Task.objects.filter(pk=export.pk).exists()
     assert os.path.exists(export.file.path)
     assert f'The file {export.file.name} of a task was not deleted' in clean.log
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tasks_clean_deletes_the_files_after_the_rows(settings, tmp_path, monkeypatch):
+    """
+    A file is deleted once the row of its task is deleted and committed, never before: a
+    failed deletion of the rows kept tasks whose files were gone.
+    """
+    export = _old_export(settings, tmp_path)
+    storage = type(Task._meta.get_field('file').storage)
+    delete = storage.delete
+    rows_left = []
+
+    def recording_delete(self, name):
+        rows_left.append(Task.objects.filter(file=name).exists())
+        delete(self, name)
+
+    monkeypatch.setattr(storage, 'delete', recording_delete)
+
+    clean = _run(BgTasksClean.delay())
+
+    assert clean.is_success, clean.error
+    assert rows_left == [False]
+    assert not os.path.exists(export.file.path)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tasks_clean_leaves_no_file_of_a_deleted_task_when_it_fails(settings, tmp_path):
+    """
+    A reference the ORM does not know (a table outside the models) fails the deletion of a
+    task, one by one after a protected task: the tasks deleted before it have no file left.
+    The files used to be deleted after the whole portion, so they stayed for ever.
+    """
+    settings.MEDIA_ROOT = str(tmp_path)
+    factories.ParentEntityFactory.create_batch(2, child_entities=False)
+    exports = sorted((_run(ExportParents.delay()) for _ in range(5)), key=lambda it: it.pk)
+    settings.BAZIS_TASK_LIFETIME = 1
+    time.sleep(1.1)
+    # the tasks are deleted by descending key: the protected one first, the unknown
+    # reference last
+    TaskArchive.objects.create(task=exports[-1])
+    with connection.cursor() as cursor:
+        cursor.execute('CREATE TABLE test_raw_task_ref (task_id uuid REFERENCES bg_task (id))')
+        cursor.execute('INSERT INTO test_raw_task_ref VALUES (%s)', [exports[0].pk])
+    try:
+        clean = _run(BgTasksClean.delay())
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TABLE test_raw_task_ref')
+
+    assert not clean.is_success
+    assert 'IntegrityError' in clean.error
+    deleted = [it for it in exports[1:-1] if not Task.objects.filter(pk=it.pk).exists()]
+    assert len(deleted) == 3
+    assert not [it for it in deleted if os.path.exists(it.file.path)]
 
 
 @pytest.mark.django_db(transaction=True)
