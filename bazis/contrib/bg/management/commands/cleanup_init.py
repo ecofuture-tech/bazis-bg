@@ -12,22 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from django.apps import apps
-from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.utils.translation import gettext_lazy as _
 
 
 class Command(BaseCommand):
-    help = _('Initialize cleanup cron task')
+    """
+    Deprecated, does nothing: the cleanup is the periodic task `bg_tasks_clean` declared by
+    bazis-bg (`bazis.contrib.bg.schedules`), which `migrate` applies. Kept so that the deploy
+    scripts that call it do not fail; removed in bazis-bg 2.7.
+    """
+
+    help = 'Deprecated, does nothing: migrate applies the cleanup periodic task'
 
     def handle(self, *args, **options):
-        TaskCron = apps.get_model('bg.TaskCron') # noqa F806
-
-        TaskCron.objects.get_or_create(
-            cls_path='bazis.contrib.bg.bg.tasks_clean.BgTasksClean',
-            defaults=dict(
-                name=_('Clean tasks'),
-                period=settings.BAZIS_TASK_CRON_CLEANUP,
-            ),
+        self.stderr.write(
+            'cleanup_init is deprecated and does nothing: migrate applies the periodic task '
+            'bg_tasks_clean of bazis-bg. Remove the call; the command is removed in bazis-bg 2.7.'
         )

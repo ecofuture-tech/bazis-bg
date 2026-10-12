@@ -14,17 +14,21 @@
 
 """
 The periodic tasks declared in the code (`schedules.py`, bazis.contrib.bg.declare), which
-`migrate` applies; the sample declares `entity_log_hourly` (entity/schedules.py).
+`migrate` applies; the sample declares `entity_log_hourly` (entity/schedules.py), bazis-bg
+the cleanup `bg_tasks_clean` (bazis/contrib/bg/schedules.py).
 """
 
+import importlib
 import logging
 from datetime import timedelta
+from importlib import import_module
+from types import SimpleNamespace
 
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 from django.utils.timezone import now
 
 import pytest
@@ -39,6 +43,7 @@ from bazis.contrib.bg.models import Task, TaskCron
 
 
 LOG_MESSAGE = 'entity.bg.calc_data.LogMessage'
+CLEAN = 'bazis.contrib.bg.bg.tasks_clean.BgTasksClean'
 #: the schedule of the sample
 SAMPLE = declare.declarations()
 
@@ -333,4 +338,50 @@ def test_the_changelist_locks_the_declared_periodic_tasks(admin_user):
 
     formset = model_admin.get_changelist_formset(request)(queryset=TaskCron.objects.order_by('pk'))
     enabled = {form.instance.slug: form.fields['is_enable'].disabled for form in formset.forms}
-    assert enabled == {'entity_log_hourly': True, None: False}
+    assert enabled == {'bg_tasks_clean': True, 'entity_log_hourly': True, None: False}
+
+
+@pytest.mark.django_db
+def test_the_cleanup_is_declared():
+    cron = TaskCron.objects.get(slug='bg_tasks_clean')
+    assert (cron.cls_path, cron.period, cron.is_enable, cron.managed) == (CLEAN, '3600', True, True)
+    assert cron.name == 'Background tasks cleanup'
+
+
+@pytest.mark.django_db
+def test_the_cleanup_can_be_turned_off():
+    from bazis.contrib.bg import schedules
+
+    try:
+        with override_settings(BAZIS_TASK_CLEANUP=False, BAZIS_TASK_CRON_CLEANUP=600):
+            importlib.reload(schedules)
+            assert apply_declarations() == ['taskcron bg_tasks_clean: period, is_enable changed']
+    finally:
+        importlib.reload(schedules)
+    assert TaskCron.objects.get(slug='bg_tasks_clean').is_enable is False
+
+
+@pytest.mark.django_db
+def test_the_periodic_task_of_cleanup_init_becomes_the_declared_one():
+    """
+    The migration 0007 marks the periodic task the command `cleanup_init` made (no slug) as
+    the declared one: the cleanup does not run twice and keeps its tasks.
+    """
+    TaskCron.objects.filter(slug='bg_tasks_clean').delete()
+    old = TaskCron.objects.create(name='Clean tasks', cls_path=CLEAN, period='7200')
+    task = LogMessage.delay('m')
+    Task.objects.filter(pk=task.pk).update(task_cron=old)
+    assert declare.duplicates() == [f'taskcron {old.pk} (Clean tasks) runs the schedule bg_tasks_clean']
+
+    migration = import_module('bazis.contrib.bg.migrations.0007_taskcron_clean_declared')
+    migration.adopt_cleanup(
+        MigrationExecutor(connection).loader.project_state().apps,
+        SimpleNamespace(connection=connection),
+    )
+
+    assert apply_declarations() == ['taskcron bg_tasks_clean: name, period, kwargs changed']
+    assert list(TaskCron.objects.filter(cls_path=CLEAN).values_list('pk', 'slug')) == [
+        (old.pk, 'bg_tasks_clean')
+    ]
+    assert Task.objects.get(pk=task.pk).task_cron_id == old.pk
+    assert declare.duplicates() == []

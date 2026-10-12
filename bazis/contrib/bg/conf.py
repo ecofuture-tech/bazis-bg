@@ -39,12 +39,12 @@ class Settings(BazisSettings):
     BAZIS_TASK_CRON_LIFETIME: int = Field(
         21600, title='Lifetime of periodic background tasks', json_schema_extra={'dynamic': True}
     )
+    # the cleanup is the periodic task `bg_tasks_clean` (`schedules.py`): `migrate` applies
+    # these two, they are not dynamic
+    BAZIS_TASK_CLEANUP: bool = Field(True, title='Whether the cleanup of background tasks runs')
     BAZIS_TASK_CRON_CLEANUP: int = Field(
-        3600,
-        title='Interval for running cleanup of periodic background tasks',
-        json_schema_extra={'dynamic': True},
+        3600, title='Interval in seconds for running the cleanup of background tasks'
     )
-
 
 
 settings = Settings()

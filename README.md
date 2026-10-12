@@ -365,6 +365,13 @@ data migration that depends on the old one and on `('bg', '0006_taskcron_slug_ma
 (`apps.get_model('bg', 'TaskCron').objects.filter(cls_path='myapp.tasks.DataProcessingTask', slug=None).delete()`).
 The tasks of the old row are kept, no longer linked to a periodic task.
 
+#### Cleanup
+
+bazis-bg declares its own periodic task, `bg_tasks_clean`: every `BAZIS_TASK_CRON_CLEANUP`
+seconds (3600) it deletes the manual tasks not updated for `BAZIS_TASK_LIFETIME` seconds
+(90 days) and the periodic ones not updated for `BAZIS_TASK_CRON_LIFETIME` (6 hours), with
+their files. `BS_BAZIS_TASK_CLEANUP=false` turns it off.
+
 A managed periodic task no longer declared is disabled and becomes an ordinary one, which
 the admin may enable again (the roles of bazis-permit stay managed instead). The name is
 stored translated into `LANGUAGE_CODE`. The system checks `bg.E001` and `bg.E002` validate
