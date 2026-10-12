@@ -16,6 +16,7 @@ from bazis.contrib.bg.models_abstract import (
     TaskBase,
     TaskCronBase,
     TaskHandlerBase,
+    # the migrations 0001 and 0002 refer to it here: kept until they are squashed
     task_file_name,  # noqa F401
 )
 
