@@ -14,8 +14,8 @@
 
 """
 The actions of `LoadDownloadAdminMixin`: its change list gives `file_load.js` the actions
-that load a file, the message of a started task escapes its name. The templates of the
-admin of the other models are those of Django.
+that load a file, the message of a started task escapes its name. The other change lists,
+the tasks and periodic tasks of bazis-bg too, are those of Django.
 """
 
 from django.contrib import admin
@@ -74,6 +74,14 @@ def test_the_message_of_a_started_task_escapes_its_name(admin_user):
 
 
 @pytest.mark.django_db
-def test_other_change_lists_are_those_of_django(admin_client):
-    content = admin_client.get('/admin/entity/parententity/').content.decode()
-    assert 'bg-actions-task-load' not in content
+@pytest.mark.parametrize(
+    'url', ['/admin/entity/parententity/', '/admin/bg/task/', '/admin/bg/taskcron/']
+)
+def test_other_change_lists_are_those_of_django(admin_client, url):
+    """
+    The template of the mixin is not one Django looks up for the models of an application
+    (`admin/<app>/change_list.html`): the admin of the tasks does not get it either.
+    """
+    response = admin_client.get(url)
+    assert response.status_code == 200
+    assert 'bg-actions-task-load' not in response.content.decode()

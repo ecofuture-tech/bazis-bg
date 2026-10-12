@@ -86,7 +86,7 @@ class LoadDownloadAdminMetaclass(forms.MediaDefiningClass):
 class LoadDownloadAdminMixin(metaclass=LoadDownloadAdminMetaclass):
     action_form = LoadActionForm
     #: gives file_load.js the actions that load a file
-    change_list_template = 'admin/bg/change_list.html'
+    change_list_template = 'admin/bg/load_download_change_list.html'
     tasks_load = []
     tasks_download = []
     tasks_handler = []

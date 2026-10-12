@@ -128,7 +128,7 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   ```
 - Admin: `LoadDownloadAdminMixin` with `tasks_download`, `tasks_load`, `tasks_handler`
   (task classes, in the admin class body) adds actions that start them without arguments
-  (`tasks_load` with the uploaded file). Its change list is `admin/bg/change_list.html`:
+  (`tasks_load` with the uploaded file). Its change list is `admin/bg/load_download_change_list.html`:
   an admin class with a `change_list_template` of its own extends that template.
 
 ## Periodic tasks and cleanup

@@ -1,6 +1,6 @@
 'use strict';
 // The file field of the action form of LoadDownloadAdminMixin: shown only for the actions
-// that load a file (bg-actions-task-load, rendered by admin/bg/change_list.html).
+// that load a file (bg-actions-task-load, rendered by admin/bg/load_download_change_list.html).
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('changelist-form');
     const data = document.getElementById('bg-actions-task-load');
