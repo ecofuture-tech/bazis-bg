@@ -31,7 +31,7 @@ from bazis.core.routes_abstract.jsonapi.callbacks import JsonApiResponse
 from bazis.core.schemas import AccessAction, CrudAccessAction
 from bazis.core.schemas.enums import RouteKind
 
-from .models_abstract import task_error_summary, task_file_download_name
+from .models_abstract import task_file_download_name
 
 
 #: the size of the chunks a download reads from the storage
@@ -56,8 +56,8 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     """
     The background tasks of the user (staff see all tasks): their arguments, logs and files
     are private. As the default route of the tasks, its `restrict_queryset` is also what
-    the other routes link and include (bazis 2.7). The author reads the class of an error
-    only and no log (`hide_internals`): the traceback and the log are for staff.
+    the other routes link and include (bazis 2.7). The author reads only that a task failed
+    and no log (`hide_internals`): the traceback and the log are for staff.
     """
 
     model = apps.get_model('bg.Task')
@@ -135,12 +135,13 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     def hide_internals(self, task):
         """
         For a user who is not staff, the loaded task (never saved: the route reads only)
-        holds the class of its error instead of the traceback and no log: they hold paths,
-        code and data of the server.
+        holds `Error` instead of the traceback of its error and no log: they hold paths,
+        code and data of the server, and no part of the text is safe to read (a message may
+        quote anything, even a traceback).
         """
         if not self.inject.user.is_staff:
             if 'error' not in task.get_deferred_fields():
-                task.error = task_error_summary(task.error)
+                task.error = task.error and 'Error'
             task.log = None
         return task
 

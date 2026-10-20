@@ -74,7 +74,7 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   `LANGUAGE_CODE` unless the task activates a language (`translation.override(self.language)`
   in `handle`, as the export below). A client shows the stored text as it is.
 - States: `waiting` → `starting` → `running` → `done`; `task.is_success`, `is_error`
-  (`error` holds the traceback; the task route gives the author its class only, see
+  (`error` holds the traceback; the task route gives the author `Error` only, see
   Rules), `is_interrupt`; `phase`, `log`, `result`, `file`.
 - Hooks: `pre_handle`, `post_handle`, `excepting` (error), `interrupting`, `finishing`
   (always). The admin "Interrupt" button sets `interrupt`; the task stops at its next
@@ -108,8 +108,10 @@ class ReportRouteSet(UserRequiredRouteBase):
   or `flush`). A phase that ends is moved to `phases_history` as `{phase, duration,
   expected, performed}` and both are set to null: a progress bar reads them while `running`
   and the finished phases from `phases_history`; once the task is done both are null.
-- `error`: the class of the exception for the author (`ValueError`; `Error` for an error
-  written without a traceback), the traceback for staff; `log` is null for the author.
+- `error`: `Error` for the author of a failed task (null or empty otherwise), the traceback
+  for staff; `log` is null for the author. A client that must show the cause to the author
+  reads it from a field of the product (the task writes it with `set_result`, a message
+  it chooses), not from the traceback.
 - `result` is what the task gave `set_result`; its file is downloaded from
   `/api/v1/bg/task/{id}/download/`, not from the `file` attribute (see Rules).
 
@@ -266,8 +268,10 @@ SCHEDULES = [
   own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
   declares `default_route = True`.
 - The traceback of an error and the log hold paths, code and data of the server: the task
-  route gives a user who is not staff the class of the error only (`task_error_summary` of
-  `models_abstract`) and no log, and its filter and sorting do not reach them
+  route gives a user who is not staff `Error` for an error (an error that is null or empty
+  stays so; no part of the text: a message may quote anything, even a traceback, so the
+  class read from it is not safe either) and no log, and its filter and sorting do not
+  reach them
   (`BgRoute.query_fields`, also through a relation of another route); staff read both. A
   product route that includes `task` gives the tasks as loaded, traceback and log included
   (the core has no hook for the items of `included`): do not include the tasks for users

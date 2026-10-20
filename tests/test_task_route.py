@@ -14,7 +14,7 @@
 
 """
 The task route for the author of a task and staff: the traceback of an error and the log
-hold paths, code and data of the server, so the author reads only the class of the error;
+hold paths, code and data of the server, so the author reads only that the task failed;
 a product action that queues a task answers 202 and the client follows the task.
 """
 
@@ -23,14 +23,12 @@ from traceback import format_exc
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 
-import psycopg
 import pytest
 from bazis_test_utils.utils import get_api_client
 from entity.bg.calc_data import LogMessage
 
 from bazis.contrib.bg.basic.base import BgBase
 from bazis.contrib.bg.models import Task
-from bazis.contrib.bg.models_abstract import task_error_summary
 from bazis.contrib.users import get_user_model
 
 from tests import factories
@@ -66,7 +64,7 @@ def listed(response):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_author_reads_the_class_of_the_error_only(sample_app, settings, tmp_path):
+def test_the_author_reads_only_that_the_task_failed(sample_app, settings, tmp_path):
     settings.MEDIA_ROOT = str(tmp_path)
     owner = User.objects.create_user('owner', password='weak_password_1')
     stranger = User.objects.create_user('stranger', password='weak_password_2')
@@ -82,15 +80,18 @@ def test_the_author_reads_the_class_of_the_error_only(sample_app, settings, tmp_
     # an error written without a traceback (bg_handler, bg_scheduler)
     lost = LogMessage.delay('lost', author=owner)
     Task.objects.filter(pk=lost.pk).update(state='done', error='Uncaught execution error')
+    empty = LogMessage.delay('empty', author=owner)
+    Task.objects.filter(pk=empty.pk).update(error='')
 
     owner_client = client_of(sample_app, owner)
     item = attributes(owner_client.get(f'{TASKS}{failed.pk}/'))
-    assert (item['error'], item['log']) == ('ValueError', None)
+    assert (item['error'], item['log']) == ('Error', None)
     assert item['state'] == 'done'
     items = listed(owner_client.get(TASKS))
-    assert (items[str(failed.pk)]['error'], items[str(failed.pk)]['log']) == ('ValueError', None)
+    assert (items[str(failed.pk)]['error'], items[str(failed.pk)]['log']) == ('Error', None)
     assert (items[str(done.pk)]['error'], items[str(done.pk)]['log']) == (None, None)
     assert items[str(lost.pk)]['error'] == 'Error'
+    assert items[str(empty.pk)]['error'] == ''
     # the filter and the sorting do not reach them either
     for field in ('error', 'log'):
         response = owner_client.get(TASKS, params={'filter': f'{field}__iregex=secret'})
@@ -139,54 +140,47 @@ def noted():
     raise exception
 
 
-def chained(last):
+def chained():
     try:
-        {}['key']
+        {}['secret_key']
     except KeyError:
-        raise_(last)
+        raise_(TypeError('secret_token'))
 
 
 def caused():
     try:
-        {}['key']
+        {}['secret_key']
     except KeyError as e:
         raise ValueError('secret_token') from e
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    'fail, summary',
+    'fail',
     [
-        (lambda: raise_(psycopg.errors.UniqueViolation('duplicate key\nDETAIL:  Key (i)=(1).')), 'UniqueViolation'),
-        (lambda: raise_(ValueError('failed for\nsecret_token_abc')), 'ValueError'),
-        (lambda: raise_(ValueError('x\n  File "/srv/app.py", line 1, in f\nsecret_token')), 'ValueError'),
-        (noted, 'ValueError'),
-        (lambda: chained(TypeError('secret_token')), 'TypeError'),
-        (caused, 'ValueError'),
+        lambda: raise_(ValueError('failed for\nsecret_token_abc')),
+        lambda: raise_(ValueError('x\n  File "/srv/secret.py", line 1, in f\nsecret_token')),
+        noted,
+        chained,
+        caused,
+        # a message that quotes the traceback of a worker
+        lambda: raise_(RuntimeError(
+            'worker failed:\nTraceback (most recent call last):\n'
+            '  File "/srv/secret.py", line 1, in f\nsecret_word'
+        )),
     ],
 )
-def test_task_error_summary_of_a_traceback(fail, summary):
-    """The class of the exception raised last, whatever its message and notes."""
-    assert task_error_summary(formatted(fail)) == summary
+def test_the_author_reads_nothing_of_the_text_of_an_error(sample_app, fail):
+    """No message, note, path or part of a traceback in the text, however it is written."""
+    owner = User.objects.create_user('owner', password='weak_password_1')
+    task = LogMessage.delay('x', author=owner)
+    error = formatted(fail)
+    assert 'secret' in error
+    Task.objects.filter(pk=task.pk).update(state='done', error=error)
 
-
-@pytest.mark.parametrize(
-    'error, summary',
-    [
-        (None, None),
-        ('', ''),
-        ('Traceback (most recent call last):\n  File "x.py", line 1\nValueError: secret\n', 'ValueError'),
-        ('Traceback (most recent call last):\n  File "x.py", line 1\nKeyError', 'KeyError'),
-        (
-            'Traceback (most recent call last):\n  File "x.py", line 1\n'
-            'psycopg.errors.UniqueViolation: duplicate key value (email)=(a@b.c)\n',
-            'UniqueViolation',
-        ),
-        ('Uncaught execution error', 'Error'),
-        ('ValueError: not a traceback', 'Error'),
-    ],
-)
-def test_task_error_summary(error, summary):
-    assert task_error_summary(error) == summary
+    response = client_of(sample_app, owner).get(TASKS)
+    assert listed(response)[str(task.pk)]['error'] == 'Error'
+    assert 'secret' not in response.text
 
 
 @pytest.mark.django_db(transaction=True)
