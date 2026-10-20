@@ -15,6 +15,7 @@ background work needs Setup, Tasks and Rules.
 |---|---|
 | Setup | you install it: the app, where the task classes live, `bg_scheduler` and the handlers, `bg_task`, the storage of the files of the tasks |
 | Tasks | you write a task: `BgBase`, `delay()`, the names and phases (lazy texts), the states, the hooks, the transactions |
+| Following a task from a client | an action of a route starts a task and the client follows it: `task_accepted`, the fields of the task route, the progress of the phases, the error |
 | Exports and imports | a task writes or reads xlsx: `BgBaseDownloadModel`, `BgBaseDownload`, `BgBaseLoad`, an export for the user of a request, the admin actions |
 | Periodic tasks and cleanup | a task runs on a schedule: `Schedule` in `schedules.py`, what `migrate` applies, a periodic task of an old data migration, the checks `bg.*`, the cleanup |
 | Rules | before you write the code, once: who sees the tasks, the download of their files, the class paths, the handlers |
@@ -73,13 +74,45 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   `LANGUAGE_CODE` unless the task activates a language (`translation.override(self.language)`
   in `handle`, as the export below). A client shows the stored text as it is.
 - States: `waiting` → `starting` → `running` → `done`; `task.is_success`, `is_error`
-  (`error` holds the traceback), `is_interrupt`; `phase`, `log`, `result`, `file`.
+  (`error` holds the traceback; the task route gives the author its class only, see
+  Rules), `is_interrupt`; `phase`, `log`, `result`, `file`.
 - Hooks: `pre_handle`, `post_handle`, `excepting` (error), `interrupting`, `finishing`
   (always). The admin "Interrupt" button sets `interrupt`; the task stops at its next
   `progress` sync, `next_phase`, `flush` or `set_result`.
 - `is_transaction = True` (default) runs the task with autocommit off, but every
   `next_phase`, `flush`, `set_result` (and synced `progress`) commits the work done so far;
   an error rolls back only since the last commit.
+
+## Following a task from a client
+
+An action of a route that starts work queues the task with `author=user` (or the user does
+not see it) and answers `task_accepted(task)` (`bazis.contrib.bg.routes`): 202 with
+`{"data": {"type": "bg.task", "id": "<id>"}}` and `Location: /api/v1/bg/task/<id>/`, the
+URL of the task in the default route of the tasks. The client (the task progress component
+of bazis-front) polls that URL until `state` is `done`:
+
+```python
+from bazis.contrib.bg.routes import task_accepted
+
+class ReportRouteSet(UserRequiredRouteBase):
+    @http_post('/calc/', status_code=202, kind=RouteKind.OTHER)
+    def action_calc(self, **kwargs):
+        return task_accepted(CalcData.delay(author=self.inject.user))
+```
+
+- `state`: `waiting`, `starting`, `running`, `done`. Done, the task succeeded when `error`
+  is empty and `interrupt` false; `phase` is then `completed`, `error`, `interrupted` or a
+  text of the handler when the process of the task failed.
+- `expected` and `performed` are those of the current `phase` (a number or a dict of
+  numbers, as the task gives them; `performed` from the first sync of `progress`, every 3 s,
+  or `flush`). A phase that ends is moved to `phases_history` as `{phase, duration,
+  expected, performed}` and both are set to null: a progress bar reads them while `running`
+  and the finished phases from `phases_history`; once the task is done both are null.
+- `error`: the class of the exception for the author (`ValueError`; `Error` for an error
+  written without a traceback), the traceback for staff; `log` is null for the author.
+- `result` is what the task gave `set_result`; its file is downloaded from
+  `/api/v1/bg/task/{id}/download/`, not from the `file` attribute (see Rules).
+
 ## Exports and imports
 
 - Exports: `BgBaseDownloadModel` (`model`, `fields_read`; all objects, override
@@ -96,8 +129,9 @@ task = Recalc.delay(category_id, author=user)   # -> Task (state `waiting`)
   that user; write the texts in the language of the request:
 
   ```python
-  # the route: @http_post('/export/', kind=RouteKind.OTHER) def action_export(self, ...)
+  # the route: @http_post('/export/', status_code=202, kind=RouteKind.OTHER) def action_export(self, ...)
   task = OrdersExport.delay(user_id=str(user.pk), language=get_language(), author=user)
+  # ... return task_accepted(task)    (see Following a task from a client)
 
   class OrdersExport(BgBaseDownload):
       name = 'Orders'
@@ -231,6 +265,14 @@ SCHEDULES = [
   otherwise) and `include` leaves out the others; its route set needs no checks of its
   own. A custom task route of `bg.Task` changes the rule in `restrict_queryset` and
   declares `default_route = True`.
+- The traceback of an error and the log hold paths, code and data of the server: the task
+  route gives a user who is not staff the class of the error only (`task_error_summary` of
+  `models_abstract`) and no log, and its filter and sorting do not reach them
+  (`BgRoute.query_fields`, also through a relation of another route); staff read both. A
+  product route that includes `task` gives the tasks as loaded, traceback and log included
+  (the core has no hook for the items of `included`): do not include the tasks for users
+  who are not staff, the client reads them at the task route. A custom task route
+  subclasses `BgRoute` to keep this.
 - `GET /api/v1/bg/task/{id}/download/` serves the file of a task the user sees (401 for an
   anonymous user, 404 for another user's task, a task without a file or a file missing from
   the storage) as a download named after the file without its token, with `nosniff`,

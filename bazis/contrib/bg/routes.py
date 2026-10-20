@@ -27,21 +27,37 @@ from bazis.contrib.author.routes_abstract import AuthorRequiredRouteBase
 from bazis.contrib.users.models_abstract import UserMixin
 from bazis.core.routes_abstract.initial import http_get
 from bazis.core.routes_abstract.jsonapi import RestrictedQsRouteMixin
+from bazis.core.routes_abstract.jsonapi.callbacks import JsonApiResponse
 from bazis.core.schemas import AccessAction, CrudAccessAction
 from bazis.core.schemas.enums import RouteKind
 
-from .models_abstract import task_file_download_name
+from .models_abstract import task_error_summary, task_file_download_name
 
 
 #: the size of the chunks a download reads from the storage
 DOWNLOAD_CHUNK_SIZE = 64 * 1024
 
 
+def task_accepted(task) -> JsonApiResponse:
+    """
+    The answer of an action that queued a task: 202, its identifier
+    (`{"data": {"type": "bg.task", "id": ...}}`) and the URL of the task in its default route
+    as `Location` (`/api/v1/bg/task/{id}/`), which the client polls until it is done.
+    """
+    url = type(task).get_default_route().url_path_for('action_retrieve', item_id=str(task.pk))
+    return JsonApiResponse(
+        {'data': {'type': task.get_resource_label(), 'id': str(task.pk)}},
+        status_code=202,
+        headers={'Location': url},
+    )
+
+
 class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     """
     The background tasks of the user (staff see all tasks): their arguments, logs and files
     are private. As the default route of the tasks, its `restrict_queryset` is also what
-    the other routes link and include (bazis 2.7).
+    the other routes link and include (bazis 2.7). The author reads the class of an error
+    only and no log (`hide_internals`): the traceback and the log are for staff.
     """
 
     model = apps.get_model('bg.Task')
@@ -61,6 +77,17 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
             return qs.none()
         qs = super().restrict_queryset(qs, access_action, user=user, **kwargs)
         return qs if user.is_staff else qs.filter(author=user)
+
+    @classmethod
+    def query_fields(cls, user=None, **kwargs):
+        """
+        The filter and the sorting of a user who is not staff do not reach the error and the
+        log (`hide_internals`): a filter by their text would read them.
+        """
+        fields = super().query_fields(user=user, **kwargs)
+        if (user := UserMixin.authenticated_user(user)) is not None and user.is_staff:
+            return fields
+        return [it for it in fields if it.source not in ('error', 'log')]
 
     @http_get(
         '/{item_id}/download/',
@@ -104,3 +131,24 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
         return self.restrict_queryset(
             super().get_queryset(), CrudAccessAction.VIEW, user=self.inject.user
         )
+
+    def hide_internals(self, task):
+        """
+        For a user who is not staff, the loaded task (never saved: the route reads only)
+        holds the class of its error instead of the traceback and no log: they hold paths,
+        code and data of the server.
+        """
+        if not self.inject.user.is_staff:
+            if 'error' not in task.get_deferred_fields():
+                task.error = task_error_summary(task.error)
+            task.log = None
+        return task
+
+    def list(self):
+        qs = super().list()
+        for task in qs:
+            self.hide_internals(task)
+        return qs
+
+    def retrieve(self, item_id: str, with_lock: bool = False, is_force: bool = False):
+        return self.hide_internals(super().retrieve(item_id, with_lock, is_force))

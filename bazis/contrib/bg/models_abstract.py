@@ -54,6 +54,25 @@ def task_file_download_name(name: str) -> str:
     return match['name'] if match else name
 
 
+#: the last line of a traceback: the class of the exception (with its module), then its
+#: message, if any
+TRACEBACK_EXCEPTION = re.compile(r'^(?:[A-Za-z_]\w*\.)*(?P<name>[A-Za-z_]\w*)(?::|$)')
+
+
+def task_error_summary(error: str | None) -> str | None:
+    """
+    The error of a task for its author: the class of the exception of the traceback
+    (`ValueError`), `Error` for a text that is not a traceback; no error stays as it is. The
+    traceback and its message hold paths, code and data of the server (a database error
+    quotes the row).
+    """
+    if not error:
+        return error
+    lines = error.strip().splitlines()
+    match = TRACEBACK_EXCEPTION.match(lines[-1]) if error.startswith('Traceback') else None
+    return match['name'] if match else 'Error'
+
+
 if settings.BAZIS_STORAGE_BG:
     TaskStorage = import_class(settings.BAZIS_STORAGE_BG)
 else:
