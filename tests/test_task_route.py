@@ -18,9 +18,12 @@ hold paths, code and data of the server, so the author reads only the class of t
 a product action that queues a task answers 202 and the client follows the task.
 """
 
+from traceback import format_exc
+
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 
+import psycopg
 import pytest
 from bazis_test_utils.utils import get_api_client
 from entity.bg.calc_data import LogMessage
@@ -48,7 +51,8 @@ class Fails(BgBase):
 
     def handle(self):
         self.log.info('reading /srv/app/secret.py')
-        raise ValueError('row 42: secret@example.com')
+        # a database error: the message quotes the row on its last line
+        raise ValueError('duplicate key\nDETAIL:  Key (email)=(secret@example.com) exists.')
 
 
 def attributes(response):
@@ -115,6 +119,54 @@ def test_the_author_reads_the_class_of_the_error_only(sample_app, settings, tmp_
     assert Task.objects.get(pk=failed.pk).error == traceback
     response = owner_client.get(f'{TASKS}{failed.pk}/download/')
     assert (response.status_code, response.content) == (200, b'rows')
+
+
+def formatted(fail):
+    """The traceback of the exception that `fail` raises, as the handler writes it."""
+    try:
+        fail()
+    except Exception:  # NOQA [B902]
+        return format_exc()
+
+
+def raise_(exception):
+    raise exception
+
+
+def noted():
+    exception = ValueError('message')
+    exception.add_note('secret_note')
+    raise exception
+
+
+def chained(last):
+    try:
+        {}['key']
+    except KeyError:
+        raise_(last)
+
+
+def caused():
+    try:
+        {}['key']
+    except KeyError as e:
+        raise ValueError('secret_token') from e
+
+
+@pytest.mark.parametrize(
+    'fail, summary',
+    [
+        (lambda: raise_(psycopg.errors.UniqueViolation('duplicate key\nDETAIL:  Key (i)=(1).')), 'UniqueViolation'),
+        (lambda: raise_(ValueError('failed for\nsecret_token_abc')), 'ValueError'),
+        (lambda: raise_(ValueError('x\n  File "/srv/app.py", line 1, in f\nsecret_token')), 'ValueError'),
+        (noted, 'ValueError'),
+        (lambda: chained(TypeError('secret_token')), 'TypeError'),
+        (caused, 'ValueError'),
+    ],
+)
+def test_task_error_summary_of_a_traceback(fail, summary):
+    """The class of the exception raised last, whatever its message and notes."""
+    assert task_error_summary(formatted(fail)) == summary
 
 
 @pytest.mark.parametrize(
