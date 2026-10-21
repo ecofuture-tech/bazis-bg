@@ -270,13 +270,12 @@ SCHEDULES = [
 - The traceback of an error and the log hold paths, code and data of the server: the task
   route gives a user who is not staff `Error` for an error (an error that is null or empty
   stays so; no part of the text: a message may quote anything, even a traceback, so the
-  class read from it is not safe either) and no log, and its filter and sorting do not
-  reach them
-  (`BgRoute.query_fields`, also through a relation of another route); staff read both. A
-  product route that includes `task` gives the tasks as loaded, traceback and log included
-  (the core has no hook for the items of `included`): do not include the tasks for users
-  who are not staff, the client reads them at the task route. A custom task route
-  subclasses `BgRoute` to keep this.
+  class read from it is not safe either) and no log; staff read both. The rule is the
+  source of the fields `error` and `log` in `BgRoute.fields` (`error_shown`, `log_shown`: the
+  user of the request, `UserMixin.authenticated_user(None)`), so `included` of any route
+  gives the same `Error` and null, and they are no key of a filter or a sorting for anyone,
+  also through a relation of another route (staff read the traceback in the admin). A
+  custom task route subclasses `BgRoute` to keep this.
 - `GET /api/v1/bg/task/{id}/download/` serves the file of a task the user sees (401 for an
   anonymous user, 404 for another user's task, a task without a file or a file missing from
   the storage) as a download named after the file without its token, with `nosniff`,

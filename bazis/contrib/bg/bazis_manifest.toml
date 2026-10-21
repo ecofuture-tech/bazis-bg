@@ -66,7 +66,7 @@ text = "a task runs without the request, its user or its language: pass the user
 text = "the file of a task is downloaded from GET /api/v1/bg/task/{id}/download/: its file attribute is a public media URL"
 
 [[pitfalls]]
-text = "the task route gives authors `Error` for an error and no log; a product route that includes `task` gives the traceback and the log"
+text = "the task route, and `included` of any route, gives authors `Error` for an error and no log (fields `error` and `log` of BgRoute); a custom task route subclasses BgRoute to keep them"
 
 [[pitfalls]]
 text = "do not declare permit_public = True on the task routes: they restrict the tasks themselves"

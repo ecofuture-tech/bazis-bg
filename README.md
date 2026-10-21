@@ -640,8 +640,8 @@ The fields of `GET /api/v1/bg/task/{id}/`:
   the current phase from them while the task runs and the finished phases from
   `phases_history`. Once the task is done both are null.
 - `error`: for the author of the task, `Error` when it failed (null or empty otherwise);
-  staff see the traceback. `log` is shown to staff only. To show the cause to the author,
-  write a message of your own to the result of the task (`set_result`).
+  staff see the traceback. `log` is shown to staff only (null for the author). To show the
+  cause to the author, write a message of your own to the result of the task (`set_result`).
 - `result`: what the task passed to `set_result`; the file is downloaded from
   `GET /api/v1/bg/task/{id}/download/`.
 

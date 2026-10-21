@@ -30,6 +30,7 @@ from entity.bg.calc_data import LogMessage
 from bazis.contrib.bg.basic.base import BgBase
 from bazis.contrib.bg.models import Task
 from bazis.contrib.users import get_user_model
+from bazis.contrib.users.models_abstract import UserMixin
 
 from tests import factories
 
@@ -109,9 +110,10 @@ def test_the_author_reads_only_that_the_task_failed(sample_app, settings, tmp_pa
     item = attributes(staff_client.get(f'{TASKS}{failed.pk}/'))
     assert (item['error'], item['log']) == (traceback, log)
     assert listed(staff_client.get(TASKS))[str(failed.pk)]['error'] == traceback
+    # nobody filters or sorts by them: staff read the traceback in the admin
     response = staff_client.get(TASKS, params={'filter': 'error__iregex=secret'})
-    assert list(listed(response)) == [str(failed.pk)]
-    assert len(listed(staff_client.get(REPORTS, params=by_error))) == 1
+    assert response.status_code == 400, response.text
+    assert staff_client.get(REPORTS, params=by_error).status_code == 400
 
     assert client_of(sample_app, stranger).get(f'{TASKS}{failed.pk}/').status_code == 404
     assert listed(client_of(sample_app, stranger).get(TASKS)) == {}
@@ -213,3 +215,86 @@ def test_a_client_follows_the_task_of_an_action(sample_app):
     assert [
         (it['phase'], it['expected'], it['performed']) for it in task['phases_history']
     ] == [('First phase: parents', 3, 3)]
+
+
+def report_of(client, task, **params):
+    """Creates a report of the user that references the task; returns its response."""
+    report = {'type': 'entity.report', 'attributes': {'title': 'Report'}}
+    report['relationships'] = {'task': {'data': {'type': 'bg.task', 'id': str(task.pk)}}}
+    return client.post(REPORTS, json_data={'data': report}, params=params)
+
+
+def included_tasks(response):
+    assert response.status_code in (200, 201), response.text
+    return [it['attributes'] for it in response.json().get('included', []) if it['type'] == 'bg.task']
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_included_task_is_masked_the_same_way(sample_app):
+    """
+    `error` and `log` are fields of the default route of the tasks, so the tasks that
+    another route includes (read, create, update) hold `Error` and no log for the author,
+    the traceback and the log for staff, and nothing of another user's task.
+    """
+    owner = User.objects.create_user('owner', password='weak_password_1')
+    stranger = User.objects.create_user('stranger', password='weak_password_2')
+    staff = User.objects.create_user('staff', password='weak_password_3', is_staff=True)
+    failed = Fails.delay(author=owner)
+    call_command('bg_task', task_id=failed.id)
+    traceback = Task.objects.get(pk=failed.pk).error
+    log = Task.objects.get(pk=failed.pk).log
+    assert 'secret@example.com' in traceback and '/srv/app/secret.py' in log
+    include = {'include': 'task'}
+
+    owner_client = client_of(sample_app, owner)
+    created = report_of(owner_client, failed, **include)
+    assert created.status_code == 201, created.text
+    report_id = created.json()['data']['id']
+    report_url = f'{REPORTS}{report_id}/'
+    patch = {'data': {'type': 'entity.report', 'id': report_id, 'attributes': {'title': 'New'}}}
+
+    for response in (
+        created,
+        owner_client.get(report_url, params=include),
+        owner_client.patch(report_url, json_data=patch, params=include),
+    ):
+        [task] = included_tasks(response)
+        assert (task['error'], task['log']) == ('Error', None)
+        assert 'secret' not in response.text and '/srv/app' not in response.text
+    assert 'secret' not in owner_client.get(REPORTS, params=include).text
+
+    [task] = included_tasks(client_of(sample_app, staff).get(report_url, params=include))
+    assert (task['error'], task['log']) == (traceback, log)
+
+    other = client_of(sample_app, stranger).get(report_url, params=include)
+    assert included_tasks(other) == []
+    assert 'secret' not in other.text
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_sparse_fields_of_a_task_are_masked_and_the_rest_is_not_computed(
+    sample_app, monkeypatch
+):
+    owner = User.objects.create_user('owner', password='weak_password_1')
+    failed = Fails.delay(author=owner)
+    call_command('bg_task', task_id=failed.id)
+    client = client_of(sample_app, owner)
+
+    response = client.get(f'{TASKS}{failed.pk}/', params={'fields[bg.task]': 'error,state'})
+    assert attributes(response) == {'error': 'Error', 'state': 'done'}
+
+    # the rule is evaluated only for the fields that are asked for
+    reads = []
+    authenticated_user = UserMixin.authenticated_user
+    monkeypatch.setattr(
+        UserMixin,
+        'authenticated_user',
+        staticmethod(lambda *a, **k: reads.append(1) or authenticated_user(*a, **k)),
+    )
+    def reads_of(fields):
+        reads.clear()
+        attributes(client.get(f'{TASKS}{failed.pk}/', params={'fields[bg.task]': fields}))
+        return len(reads)
+
+    # one more read of the user for each of `error` and `log`, none for the other fields
+    assert reads_of('error,log') == reads_of('state') + 2

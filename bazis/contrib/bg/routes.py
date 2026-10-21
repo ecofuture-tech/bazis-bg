@@ -18,6 +18,7 @@ from django.apps import apps
 from django.db.models import QuerySet
 from django.utils.http import content_disposition_header
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
 from fastapi import HTTPException
 
@@ -30,6 +31,7 @@ from bazis.core.routes_abstract.jsonapi import RestrictedQsRouteMixin
 from bazis.core.routes_abstract.jsonapi.callbacks import JsonApiResponse
 from bazis.core.schemas import AccessAction, CrudAccessAction
 from bazis.core.schemas.enums import RouteKind
+from bazis.core.schemas.fields import SchemaField, SchemaFields
 
 from .models_abstract import task_file_download_name
 
@@ -52,16 +54,42 @@ def task_accepted(task) -> JsonApiResponse:
     )
 
 
+def error_shown(route_cls, task) -> str | None:
+    """
+    The error of a task as the user of the request reads it: the traceback for staff,
+    `Error` for the others when the task failed (a null or empty error is kept). The traceback
+    holds paths, code and data of the server, and no part of the text is safe to read (a
+    message may quote anything, even a traceback).
+    """
+    user = UserMixin.authenticated_user(None)
+    return task.error if user is not None and user.is_staff else task.error and 'Error'
+
+
+def log_shown(route_cls, task) -> str | None:
+    """The log of a task: for staff only."""
+    user = UserMixin.authenticated_user(None)
+    return task.log if user is not None and user.is_staff else None
+
+
 class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     """
     The background tasks of the user (staff see all tasks): their arguments, logs and files
     are private. As the default route of the tasks, its `restrict_queryset` is also what
     the other routes link and include (bazis 2.7). The author reads only that a task failed
-    and no log (`hide_internals`): the traceback and the log are for staff.
+    and no log: `error` and `log` are fields of this route with the rule as their source, so
+    `included` of any route gives the same, and they are no key of a filter or a sorting.
     """
 
     model = apps.get_model('bg.Task')
     actions = ['action_list', 'action_retrieve', 'action_download']
+    fields = {
+        None: SchemaFields(
+            include={
+                'error': SchemaField(source=error_shown, title=gettext_lazy('Error')),
+                'log': SchemaField(source=log_shown, title=gettext_lazy('Log')),
+            },
+        ),
+    }
 
     @classmethod
     def restrict_queryset(
@@ -77,17 +105,6 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
             return qs.none()
         qs = super().restrict_queryset(qs, access_action, user=user, **kwargs)
         return qs if user.is_staff else qs.filter(author=user)
-
-    @classmethod
-    def query_fields(cls, user=None, **kwargs):
-        """
-        The filter and the sorting of a user who is not staff do not reach the error and the
-        log (`hide_internals`): a filter by their text would read them.
-        """
-        fields = super().query_fields(user=user, **kwargs)
-        if (user := UserMixin.authenticated_user(user)) is not None and user.is_staff:
-            return fields
-        return [it for it in fields if it.source not in ('error', 'log')]
 
     @http_get(
         '/{item_id}/download/',
@@ -131,25 +148,3 @@ class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
         return self.restrict_queryset(
             super().get_queryset(), CrudAccessAction.VIEW, user=self.inject.user
         )
-
-    def hide_internals(self, task):
-        """
-        For a user who is not staff, the loaded task (never saved: the route reads only)
-        holds `Error` instead of the traceback of its error and no log: they hold paths,
-        code and data of the server, and no part of the text is safe to read (a message may
-        quote anything, even a traceback).
-        """
-        if not self.inject.user.is_staff:
-            if 'error' not in task.get_deferred_fields():
-                task.error = task.error and 'Error'
-            task.log = None
-        return task
-
-    def list(self):
-        qs = super().list()
-        for task in qs:
-            self.hide_internals(task)
-        return qs
-
-    def retrieve(self, item_id: str, with_lock: bool = False, is_force: bool = False):
-        return self.hide_internals(super().retrieve(item_id, with_lock, is_force))
