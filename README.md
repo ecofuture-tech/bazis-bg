@@ -613,6 +613,38 @@ self.log.debug('Debug information')
 # Logs are automatically saved in task.log field
 ```
 
+### Following a Task from a Client
+
+An action that starts work queues the task with `author=user` and answers
+`task_accepted(task)`: `202 Accepted` with `{"data": {"type": "bg.task", "id": "<id>"}}` and
+`Location: /api/v1/bg/task/<id>/`. The client polls that URL until `state` is `done`.
+
+```python
+from bazis.contrib.bg.routes import task_accepted
+from bazis.core.routes_abstract.initial import http_post
+from bazis.core.schemas.enums import RouteKind
+
+class ReportRouteSet(UserRequiredRouteBase):
+    @http_post('/calc/', status_code=202, kind=RouteKind.OTHER)
+    def action_calc(self, **kwargs):
+        return task_accepted(CalcData.delay(author=self.inject.user))
+```
+
+The fields of `GET /api/v1/bg/task/{id}/`:
+
+- `state`: `waiting`, `starting`, `running`, `done`. A done task succeeded when `error` is
+  empty and `interrupt` is false.
+- `phase`, `expected`, `performed`: the current phase and its progress (`performed` from its
+  first sync). When a phase ends it is moved to `phases_history` as
+  `{phase, duration, expected, performed}` and `expected`/`performed` are set to null: show
+  the current phase from them while the task runs and the finished phases from
+  `phases_history`. Once the task is done both are null.
+- `error`: for the author of the task, `Error` when it failed (null or empty otherwise);
+  staff see the traceback. `log` is shown to staff only (null for the author). To show the
+  cause to the author, write a message of your own to the result of the task (`set_result`).
+- `result`: what the task passed to `set_result`; the file is downloaded from
+  `GET /api/v1/bg/task/{id}/download/`.
+
 ## Configuration
 
 ### Environment Variables

@@ -18,6 +18,7 @@ from django.apps import apps
 from django.db.models import QuerySet
 from django.utils.http import content_disposition_header
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
 from fastapi import HTTPException
 
@@ -27,8 +28,10 @@ from bazis.contrib.author.routes_abstract import AuthorRequiredRouteBase
 from bazis.contrib.users.models_abstract import UserMixin
 from bazis.core.routes_abstract.initial import http_get
 from bazis.core.routes_abstract.jsonapi import RestrictedQsRouteMixin
+from bazis.core.routes_abstract.jsonapi.callbacks import JsonApiResponse
 from bazis.core.schemas import AccessAction, CrudAccessAction
 from bazis.core.schemas.enums import RouteKind
+from bazis.core.schemas.fields import SchemaField, SchemaFields
 
 from .models_abstract import task_file_download_name
 
@@ -37,15 +40,56 @@ from .models_abstract import task_file_download_name
 DOWNLOAD_CHUNK_SIZE = 64 * 1024
 
 
+def task_accepted(task) -> JsonApiResponse:
+    """
+    The answer of an action that queued a task: 202, its identifier
+    (`{"data": {"type": "bg.task", "id": ...}}`) and the URL of the task in its default route
+    as `Location` (`/api/v1/bg/task/{id}/`), which the client polls until it is done.
+    """
+    url = type(task).get_default_route().url_path_for('action_retrieve', item_id=str(task.pk))
+    return JsonApiResponse(
+        {'data': {'type': task.get_resource_label(), 'id': str(task.pk)}},
+        status_code=202,
+        headers={'Location': url},
+    )
+
+
+def error_shown(route_cls, task) -> str | None:
+    """
+    The error of a task as the user of the request reads it: the traceback for staff,
+    `Error` for the others when the task failed (a null or empty error is kept). The traceback
+    holds paths, code and data of the server, and no part of the text is safe to read (a
+    message may quote anything, even a traceback).
+    """
+    user = UserMixin.authenticated_user(None)
+    return task.error if user is not None and user.is_staff else task.error and 'Error'
+
+
+def log_shown(route_cls, task) -> str | None:
+    """The log of a task: for staff only."""
+    user = UserMixin.authenticated_user(None)
+    return task.log if user is not None and user.is_staff else None
+
+
 class BgRoute(RestrictedQsRouteMixin, AuthorRequiredRouteBase):
     """
     The background tasks of the user (staff see all tasks): their arguments, logs and files
     are private. As the default route of the tasks, its `restrict_queryset` is also what
-    the other routes link and include (bazis 2.7).
+    the other routes link and include (bazis 2.7). The author reads only that a task failed
+    and no log: `error` and `log` are fields of this route with the rule as their source, so
+    `included` of any route gives the same, and they are no key of a filter or a sorting.
     """
 
     model = apps.get_model('bg.Task')
     actions = ['action_list', 'action_retrieve', 'action_download']
+    fields = {
+        None: SchemaFields(
+            include={
+                'error': SchemaField(source=error_shown, title=gettext_lazy('Error')),
+                'log': SchemaField(source=log_shown, title=gettext_lazy('Log')),
+            },
+        ),
+    }
 
     @classmethod
     def restrict_queryset(

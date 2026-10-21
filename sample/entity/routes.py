@@ -14,7 +14,12 @@
 
 from django.apps import apps
 
+from bazis.contrib.bg.routes import task_accepted
 from bazis.contrib.users.routes_abstract import UserRequiredRouteBase
+from bazis.core.routes_abstract.initial import http_post
+from bazis.core.schemas.enums import RouteKind
+
+from .bg.calc_data import CalcData
 
 
 class ReportRouteSet(UserRequiredRouteBase):
@@ -25,3 +30,8 @@ class ReportRouteSet(UserRequiredRouteBase):
     """
 
     model = apps.get_model('entity.Report')
+
+    @http_post('/calc/', status_code=202, kind=RouteKind.OTHER)
+    def action_calc(self, **kwargs):
+        """Queues the calculation: the client follows the task at the URL of the answer."""
+        return task_accepted(CalcData.delay(author=self.inject.user))
